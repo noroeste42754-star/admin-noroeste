@@ -4,7 +4,6 @@ import { fortalezaToday, isValidCivilDate, addCivilDays, nextCivilMonth } from '
 import { canonicalTaskPerson } from '../src/modules/central-person.ts'
 import { mergeAgendaSources } from '../src/modules/agenda-sync.ts'
 import { loadPartialAgendaRoot } from '../netlify/lib/agenda-root.ts'
-import { consumePairing, pairingKey } from '../netlify/lib/agenda-pairing.ts'
 import { transitionPublication, sourceHash, publicationVersion } from '../netlify/lib/publication-transition.ts'
 import { guardedModuleWrite } from '../netlify/lib/published-write.ts'
 import { publicationIssues, publicationPeriod, periodIsPublished } from '../src/modules/publication-contract.ts'
@@ -82,18 +81,6 @@ test('edição condicional e tentativa de publicar pela API genérica são prote
   const root=fixture(),path='tarefas/scale/periods/'+month
   assert.equal(guardedModuleWrite(root,path,'PATCH',{locked:true}),undefined)
   assert.equal(guardedModuleWrite(root,path,'PUT',{},true,{meetings:{}}),undefined)
-})
-test('pareamento é de uso único, expira e não consome código de pessoa inativa',()=>{
-  const key=pairingKey('ABCD-EF01-2345-6789'),now=1000
-  const root={master:{pessoas:{m:{active:true}}},agendaPareamentosPrivados:{[key]:{masterId:'m',expiresAt:2000,createdBy:'admin'}}}
-  assert.equal(key,pairingKey('abcdef0123456789'))
-  assert.equal(consumePairing(root,key,'token','installation',2000),undefined)
-  const paired=consumePairing(root,key,'token','installation',now)
-  assert.equal(paired.agendaDispositivosPrivados.token.masterId,'m')
-  assert.equal(consumePairing(paired,key,'other','installation',now),undefined)
-  assert.ok(root.agendaPareamentosPrivados[key])
-  root.master.pessoas.m.active=false
-  assert.equal(consumePairing(root,key,'token','installation',now),undefined)
 })
 test('falha parcial não retira eventos; retry só lê fontes solicitadas',async()=>{
   const paths=[]

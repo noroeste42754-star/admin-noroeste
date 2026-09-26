@@ -15,11 +15,9 @@
         <div class="login-box">
           <h1>Noroeste</h1>
           <p>Minha Agenda</p>
-          <label class="form-field" for="agendaPairingCode"><span>Código de pareamento</span><input id="agendaPairingCode" class="form-input" autocomplete="one-time-code" maxlength="24" placeholder="Código fornecido pelo Admin"></label>
-          <p class="form-help">Solicite ao Admin um código para sua pessoa. Ele vale por 10 minutos e pode ser usado uma vez.</p>
-          <select id="agendaPerson" hidden disabled></select>
+          <label class="form-field" for="agendaPerson"><span>Seu nome</span><select id="agendaPerson" class="form-select" disabled><option>Carregando pessoas...</option></select></label>
           <p id="agendaError" class="login-error" role="alert"></p>
-          <button id="agendaContinue" class="btn btn-primary" type="button">Salvar</button>
+          <button id="agendaContinue" class="btn btn-primary" type="button" disabled>Continuar</button>
         </div>
       </section>
       <section id="agendaShell" class="hidden">

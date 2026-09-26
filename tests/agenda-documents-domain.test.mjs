@@ -12,7 +12,7 @@ test('documento bimestral fica disponível nos dois meses cobertos', () => {
   assert.deepEqual(publicDocumentMonths([item], Date.parse('2026-09-24T00:00:00Z')), ['2026-10', '2026-09'])
 })
 
-test('seleção mantém apenas a versão oficial mais recente de cada módulo e separa Admin', () => {
+test('seleção mantém apenas a versão oficial mais recente de cada módulo e ignora documentos legados do Admin', () => {
   const grouped = groupPublicDocuments([
     doc({ id:'old', criadoEm:'2026-09-01T10:00:00.000Z' }),
     doc({ id:'new', criadoEm:'2026-09-02T10:00:00.000Z' }),
@@ -22,8 +22,8 @@ test('seleção mantém apenas a versão oficial mais recente de cada módulo e 
   ], '2026-09', Date.parse('2026-09-24T00:00:00Z'))
   assert.equal(grouped.modules.tarefas?.id, 'new')
   assert.equal(grouped.modules.oradores?.id, 'speakers')
-  assert.deepEqual(grouped.admin.map(item => item.id), ['manual'])
   assert.equal(Object.hasOwn(grouped.modules, 'programacao'), false)
+  assert.equal(Object.values(grouped.modules).some(item => item?.id === 'manual'), false)
 })
 
 test('id oficial é estável para republicação do mesmo período', () => {

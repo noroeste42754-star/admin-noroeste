@@ -10,7 +10,7 @@
     "test:tarefas": "node --test tests/tarefas-domain.test.mjs tests/tarefas-documents.test.mjs",
     "test:escala": "node --test tests/escala-domain.test.mjs tests/escala-migration.test.mjs tests/escala-documents.test.mjs",
     "test:limpeza": "node --test tests/limpeza-domain.test.mjs tests/limpeza-documents.test.mjs",
-    "test:individual": "node --test tests/agenda-changes.test.mjs tests/individual-domain.test.mjs tests/individual-preferences.test.mjs tests/agenda-documents-domain.test.mjs tests/agenda-identity-domain.test.mjs tests/agenda-device-function.test.mjs tests/agenda-worker.test.mjs tests/pwa-sync.test.mjs tests/calendar-function.test.mjs tests/calendar-subscriptions-function.test.mjs",
+    "test:individual": "node --test tests/agenda-changes.test.mjs tests/individual-domain.test.mjs tests/individual-preferences.test.mjs tests/agenda-documents-domain.test.mjs tests/agenda-device-function.test.mjs tests/agenda-worker.test.mjs tests/pwa-sync.test.mjs tests/calendar-function.test.mjs tests/calendar-subscriptions-function.test.mjs",
     "test:servico-campo": "node --test tests/servico-campo-domain.test.mjs tests/servico-campo-documents.test.mjs",
     "test:oradores": "node --test tests/messages.test.mjs tests/oradores-domain.test.mjs tests/oradores-documents.test.mjs",
     "test:all": "npm run test:mestre && npm run test:tarefas && npm run test:oradores && npm run test:limpeza && npm run test:escala && npm run test:servico-campo && npm run test:individual && npm run test:integrations",

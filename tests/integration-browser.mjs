@@ -37,7 +37,7 @@ try {
         if(conflict)root.master.pessoas.m.name='Nome atualizado'
         return route.fulfill({json:{url:url.origin+'/.netlify/functions/storage-file?path='+encodeURIComponent(b.path)}})
       }
-      if(endpoint==='agenda-device')return route.fulfill({json:request.method()==='GET'?{people:{},masterId:''}:{masterId:'m',person:{name:'Ana',active:true}}})
+      if(endpoint==='agenda-device')return route.fulfill({json:request.method()==='GET'?{people:{m:{name:'Ana',active:true}},masterId:''}:{masterId:'m'}})
       if(endpoint==='agenda-data') {
         const retry=url.searchParams.get('sources')!==null
         return route.fulfill({json:{masterId:'m',person:{name:'Ana',active:true},events:[],announcements:[],agenda:{},completedSources:retry?['limpeza']:['tarefas','oradores','escala','servicoCampo','quadro'],failedSources:retry?[]:['limpeza']}})
@@ -102,9 +102,8 @@ try {
     assert.deepEqual(root.agenda.documentos,before)
     assert.equal(new Set(uploads).size,8)
     await page.goto(new URL('agenda/',origin).href)
-    await page.locator('#agendaPairingCode').waitFor()
-    assert.equal(await page.locator('#agendaPerson').isVisible(),false)
-    await page.locator('#agendaPairingCode').fill('ABCD-EF01-2345-6789')
+    await page.locator('#agendaPerson').waitFor()
+    await page.locator('#agendaPerson').selectOption('m')
     await page.locator('#agendaContinue').click()
     await page.locator('[data-sync-failure]').waitFor()
     assert.match(await page.locator('[data-sync-failure]').innerText(),/Limpeza/)
@@ -112,7 +111,7 @@ try {
     await page.locator('[data-sync-failure]').waitFor({state:'detached'})
     assert.equal(requests.filter(r=>r.endpoint==='agenda-data').at(-1).sources,'limpeza')
     assert.deepEqual(errors,[])
-    console.log('Integração '+width+'px: cinco PDFs reais, publicação, conflito, código e retry parcial OK')
+    console.log('Integração '+width+'px: cinco PDFs reais, publicação, conflito, seleção e retry parcial OK')
     await page.close()
   }
 }finally{await browser.close()}

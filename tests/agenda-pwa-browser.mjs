@@ -28,7 +28,7 @@ const server = createServer(async (request, response) => {
           paired = body.masterId; installation = body.installationId
           return json(200, { masterId:paired })
         }
-        if (body.adminPassword !== 'fixture-admin') return json(401, { error:'Senha Admin invalida.' })
+        if (body.adminPassword !== 'fixture-admin') return json(401, { error:'Senha Admin inválida.' })
         paired = ''; return json(200, { ok:true })
       }
       if (path.endsWith('/agenda-data')) return json(200, {
@@ -59,11 +59,11 @@ try {
     let page = context.pages()[0]; attach(page)
     await page.goto(`${base}/agenda/`)
     await page.locator('#agendaPerson').selectOption('m_test1')
-    await page.getByRole('button', { name:'Salvar', exact:true }).click()
+    await page.getByRole('button', { name:'Continuar', exact:true }).click()
     await page.getByRole('tab', { name:'Quadro', exact:true }).click()
     assert.equal(await page.locator('input[type=password]').count(), 0)
     assert.match(installation, /^[a-f0-9]{48}$/)
-    await page.getByText('PDFs dos módulos', { exact:true }).click()
+    assert.equal(await page.getByText('PDFs dos módulos', { exact:true }).locator('xpath=../..').getAttribute('open'), '')
     // Localhost intentionally disables automatic registration; exercise the production worker explicitly.
     await page.evaluate(async () => {
       await navigator.serviceWorker.register('/agenda/sw.js', { scope:'/agenda/' })
@@ -87,7 +87,7 @@ try {
     await context.setOffline(false)
     await page.reload()
     await page.getByRole('tab', { name:'Quadro', exact:true }).waitFor()
-    for (let index = 0; index < 7; index++) await page.locator('#bottomUser').click()
+    await page.locator('#bottomUser').click()
     await page.locator('#agendaAdminPassword').fill('wrong')
     await page.locator('#agendaUnlockConfirm').click()
     await page.locator('#agendaUnlockError').filter({ hasText:'inválida' }).waitFor()
@@ -97,7 +97,7 @@ try {
     await page.locator('#agendaPerson').waitFor({ state:'visible' })
     assert.equal(await page.evaluate(() => Object.keys(localStorage).some(key => key.startsWith('noroeste_agenda_offline_v3:'))), false)
     await page.locator('#agendaPerson').selectOption('m_test2')
-    await page.getByRole('button', { name:'Salvar', exact:true }).click()
+    await page.getByRole('button', { name:'Continuar', exact:true }).click()
     await page.getByRole('tab', { name:'Pessoal', exact:true }).waitFor()
     assert.equal(await page.locator('#bottomUser').innerText(), 'Pessoa teste 2')
     assert.deepEqual(errors, [])

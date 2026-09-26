@@ -55,7 +55,7 @@ interface AgendaDataResponse {
 const esc = (value: unknown): string => String(value ?? '').replace(/[&<>"']/g, char => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#039;' }[char] ?? char))
 const labelDate = (date: string): string => date.split('-').reverse().join('/')
 const sourceLabels: Record<AgendaSource, string> = { tarefas:'Tarefas', oradores:'Oradores', limpeza:'Limpeza', escala:'Escala TPL', servicoCampo:'Serviço de Campo' }
-const documentSourceLabels: Record<AgendaPublicDocument['modulo'], string> = { tarefas:'Tarefas', oradores:'Oradores', limpeza:'Limpeza', escala:'Escala TPL', servicoCampo:'Serviço de Campo', admin:'Admin' }
+const documentSourceLabels: Record<PublicPdfModule, string> = { tarefas:'Tarefas', oradores:'Oradores', limpeza:'Limpeza', escala:'Escala TPL', servicoCampo:'Serviço de Campo' }
 const fortalezaDate = fortalezaToday
 
 export default function mount(context: AppContext): void {
@@ -204,7 +204,7 @@ async function load(retrySources?:string[]):Promise<void> {
       recordAgendaHistory(masterId,offlinePersonalEvents)
       saveOfflineCache()
     }
-  }catch{if(generation===syncGeneration)failedSources=[...new Set([...failedSources,...(retrySources??AGENDA_SOURCES)])]}
+  }catch(error){console.warn('Falha ao sincronizar a agenda:',error instanceof Error?error.message:'erro desconhecido');if(generation===syncGeneration)failedSources=[...new Set([...failedSources,...(retrySources??AGENDA_SOURCES)])]}
   finally {if(generation===syncGeneration){loadingAssignments=false;render()}}
 }
 
@@ -394,12 +394,13 @@ function renderBoard(root: HTMLElement): void {
   const allDocuments = documents().sort((a, b) => b.criadoEm.localeCompare(a.criadoEm)), periods = publicDocumentMonths(allDocuments)
   if (!periods.includes(boardDocumentPeriod)) { boardDocumentPeriod = periods[0] ?? fortalezaDate().slice(0, 7); persistUiPreferences() }
   const visibleDocuments = groupPublicDocuments(allDocuments, boardDocumentPeriod)
+  const otherAnnouncementsUrl = agendaConfig().outrosAnunciosDriveUrl?.trim() ?? ''
   const meetingSummary = selectedMeeting ? `${labelDate(selectedMeeting.date)} · ${selectedMeeting.kind === 'midweek' ? 'Meio de semana' : 'Fim de semana'}` : 'Nenhuma reunião futura'
   root.innerHTML = `${moduleTitle('Minha agenda')}${screenTabs()}${loadingAssignments ? '<div class="notice">Atualizando designações dos módulos...</div>' : ''}
     <div class="agenda-board-sections">
       <details class="form-panel agenda-board-card" data-agenda-panel="meetings" ${uiPreferences.board.openPanels.includes('meetings') ? 'open' : ''}><summary><strong>Texto da reunião</strong><span>${esc(meetingSummary)}</span></summary><div class="agenda-board-body"><label class="form-field"><span>Reunião</span><select id="boardMeetingDate">${meetingDates.map(item => `<option value="${esc(item.date)}" ${item.date === boardMeetingDate ? 'selected' : ''}>${esc(labelDate(item.date))} · ${item.kind === 'midweek' ? 'Meio de semana' : 'Fim de semana'}</option>`).join('') || '<option value="">Nenhuma reunião futura</option>'}</select></label><textarea id="boardInlineDraft" class="form-input" rows="8" maxlength="4000" aria-label="Texto da reunião para copiar">${esc(boardText)}</textarea><div class="agenda-actions"><button class="btn btn-ghost" id="boardInlineCopy" type="button">Copiar texto</button>${hasCleaning ? '<button class="btn btn-ghost" id="boardCleaningCopy" type="button">Copiar limpeza</button>' : ''}${boardGroupLink?'<button class="btn btn-primary" id="boardWhatsOpen" type="button">Copiar e abrir grupo</button>':''}</div></div></details>
       <details class="form-panel agenda-board-card" data-agenda-panel="moduleDocuments" ${uiPreferences.board.openPanels.includes('moduleDocuments') ? 'open' : ''}><summary><strong>PDFs dos módulos</strong><span>${Object.keys(visibleDocuments.modules).length} publicado(s)</span></summary><div class="agenda-board-body"><label class="form-field"><span>Período</span><select id="boardDocumentPeriod">${periods.map(period => `<option value="${esc(period)}" ${period === boardDocumentPeriod ? 'selected' : ''}>${esc(formatDocumentMonth(period))}</option>`).join('') || `<option value="${esc(boardDocumentPeriod)}">${esc(formatDocumentMonth(boardDocumentPeriod))}</option>`}</select></label><div class="agenda-module-downloads">${PUBLIC_PDF_MODULES.filter(module=>visibleDocuments.modules[module]).map(module => moduleDownloadRow(module, visibleDocuments.modules[module])).join('') || '<p class="empty-state">Nenhum PDF publicado neste período.</p>'}</div></div></details>
-      <details class="form-panel agenda-board-card" data-agenda-panel="adminDocuments" ${uiPreferences.board.openPanels.includes('adminDocuments') ? 'open' : ''}><summary><strong>Outros anúncios</strong><span>${visibleDocuments.admin.length}</span></summary><div class="agenda-board-body"><div class="agenda-document-list">${visibleDocuments.admin.map(item => `<a class="agenda-document" href="${esc(item.url)}" target="_blank" rel="noopener noreferrer" download><span><strong>${esc(item.nome)}</strong><small>Publicado em ${esc(labelDate(item.criadoEm.slice(0, 10)))}</small></span><b>Baixar</b></a>`).join('') || '<p class="empty-state">Nenhum anúncio neste período.</p>'}</div></div></details>
+      <details class="form-panel agenda-board-card" data-agenda-panel="adminDocuments" ${uiPreferences.board.openPanels.includes('adminDocuments') ? 'open' : ''}><summary><strong>Outros anúncios</strong><span>Google Drive</span></summary><div class="agenda-board-body">${otherAnnouncementsUrl ? `<a class="btn btn-primary" href="${esc(otherAnnouncementsUrl)}" target="_blank" rel="noopener noreferrer">Abrir pasta de anúncios</a><p class="form-help">Os arquivos são mantidos diretamente no Google Drive.</p>` : '<p class="empty-state">A pasta de anúncios ainda não foi configurada.</p>'}</div></details>
     </div>`
   const sections = root.querySelector('.agenda-board-sections')!
   const moduleDocuments = sections.querySelector('[data-agenda-panel="moduleDocuments"]')!

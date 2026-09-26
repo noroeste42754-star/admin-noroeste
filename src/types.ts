@@ -131,6 +131,7 @@ export type AgendaReminderModule =
 
 export interface AgendaConfig {
   quadroWhatsAppLink?: string
+  outrosAnunciosDriveUrl?: string
   moduleWhatsApp?: Partial<Record<AgendaReminderModule, {
     groupLink?: string
     meetingText?: string

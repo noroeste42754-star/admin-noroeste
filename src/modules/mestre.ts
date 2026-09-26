@@ -5,7 +5,6 @@ import { editorBusy, editorError, editorSaved } from '../ui/editor-feedback'
 import type {
   AppContext,
   AgendaConfig,
-  AgendaPublicDocument,
   AgendaReminderModule,
   MasterConfig,
   MasterPessoa,
@@ -46,8 +45,6 @@ import {
   sharedWhatsappPeople,
   stableUserMasterId,
 } from './mestre-domain'
-import { fortalezaCurrentMonth } from './civil-date'
-import { pdfHasExpired, pdfExpiryTime } from './pdf-expiry'
 import { navigateTo } from '../router'
 import { apiJson } from '../secure-api'
 
@@ -57,7 +54,6 @@ let pessoas:   RawPessoas  = {}
 let usuarios:  RawUsuarios = {}
 let config:    MasterConfig = {}
 let agendaConfig: AgendaConfig = {}
-let agendaDocuments: Record<string, AgendaPublicDocument> = {}
 let rootData:  Record<string, unknown> | null = null
 let rootLoading = false
 let rootLoadError = ''
@@ -162,7 +158,7 @@ export default function mount(_ctx: AppContext): void {
   restoreCandidate = null
   restoreFileName = ''
   baseLoadPromise = null
-  pessoas = {}; usuarios = {}; config = {}; agendaConfig = {}; agendaDocuments = {}
+  pessoas = {}; usuarios = {}; config = {}; agendaConfig = {}
 
   const root = document.getElementById('appContent')!
   root.innerHTML = `
@@ -217,14 +213,13 @@ function ensureBaseLoaded(): Promise<boolean> {
 
 async function loadAll(): Promise<boolean> {
   try {
-    const [pSnap, uSnap, cSnap, aSnap, dSnap] = await Promise.all([
-      get(pessoasRef), get(usuariosRef), get(configRef), get(agendaConfigRef), get(agendaDocumentsRef),
+    const [pSnap, uSnap, cSnap, aSnap] = await Promise.all([
+      get(pessoasRef), get(usuariosRef), get(configRef), get(agendaConfigRef),
     ])
     pessoas  = pSnap.exists()  ? (pSnap.val()  as RawPessoas)  : {}
     usuarios = uSnap.exists()  ? (uSnap.val()  as RawUsuarios) : {}
     config   = cSnap.exists()  ? (cSnap.val()  as MasterConfig): {}
     agendaConfig = aSnap.exists() ? (aSnap.val() as AgendaConfig) : {}
-    agendaDocuments = dSnap.exists() ? (dSnap.val() as Record<string, AgendaPublicDocument>) : {}
   } catch {
     toast('Erro ao carregar dados do Firebase')
     return false
@@ -863,27 +858,6 @@ function openPessoaModal(mid: string | null): void {
   document.getElementById('pWpp')?.addEventListener('input', updateSharedWhatsapp)
   updateSharedWhatsapp()
 
-  if (mid && pessoas[mid]?.active !== false) {
-    const pairing=document.createElement('div')
-    pairing.className='form-panel'
-    const button=document.createElement('button');button.type='button';button.className='btn btn-ghost';button.textContent='Gerar código para Minha Agenda'
-    const result=document.createElement('p');result.className='form-help';result.setAttribute('aria-live','polite')
-    const heading=document.createElement('h3');heading.textContent='Acesso à Minha Agenda'
-    const copy=document.createElement('button');copy.type='button';copy.className='btn btn-ghost';copy.textContent='Copiar código';copy.hidden=true
-    let pairingCode=''
-    copy.addEventListener('click',async()=>{try{await navigator.clipboard.writeText(pairingCode);copy.textContent='Código copiado'}catch{result.textContent+=' Não foi possível copiar. Selecione o código e copie manualmente.'}})
-    pairing.append(heading,button,result,copy);overlay.querySelector('.modal')!.append(pairing)
-    button.addEventListener('click',async()=>{
-      button.disabled=true
-      try {
-        const response=await apiJson<{code:string;name:string}>('agenda-pairing',{method:'POST',body:JSON.stringify({masterId:mid})})
-        pairingCode=response.code;copy.hidden=false;copy.textContent='Copiar código'
-        result.textContent=`${response.name}: ${response.code.match(/.{1,4}/g)!.join('-')} — válido por 10 minutos, uso único. Digite este código na Minha Agenda do aparelho.`
-      } catch { result.textContent='Não foi possível gerar o código. Tente novamente.' }
-      finally { button.disabled=false }
-    })
-  }
-
   overlay.addEventListener('click', e => { if (e.target === overlay) overlay.remove() })
   document.getElementById('btnCancelPessoa')!.addEventListener('click', () => overlay.remove())
   document.getElementById('btnSalvarPessoa')!
@@ -1307,7 +1281,6 @@ function renderConfigAgenda(): void {
   editorSaved(el);el.dataset.editorScope='true'
   const reminders = agendaConfig.icsReminders ?? {}
   const moduleWhatsApp = agendaConfig.moduleWhatsApp ?? {}
-  const manualDocuments = Object.values(agendaDocuments).filter(item => item.modulo === 'admin' && !pdfHasExpired(item.criadoEm)).sort((a, b) => b.criadoEm.localeCompare(a.criadoEm))
   const rows = AGENDA_REMINDER_MODULES.map(module => {
     const values = reminders[module.id] ?? module.defaults
     return `<div class="admin-reminder-grid admin-reminder-row">
@@ -1321,6 +1294,11 @@ function renderConfigAgenda(): void {
 
   el.innerHTML = `
     <div><h3 style="margin-top:0">WhatsApp do Quadro</h3><p class="form-help">As mensagens dos módulos são configuradas dentro de cada módulo. Aqui fica somente o grupo usado pelo Quadro de anúncios.</p><div class="form-group"><label class="form-label" for="agendaWhatsLink_quadro">Link do grupo</label><input id="agendaWhatsLink_quadro" class="form-input" type="url" value="${escapeHtml(quadroLink)}" placeholder="https://chat.whatsapp.com/..."></div><div class="form-group"><label class="form-label" for="agendaWhatsMeeting_quadro">Mensagem do Quadro</label><textarea id="agendaWhatsMeeting_quadro" class="form-input" rows="5">${escapeHtml(quadroWhatsApp.meetingText?.trim() || 'Olá. Seguem as informações da nossa reunião:\n\n{dados_da_reuniao}\n\nAgradecemos pela atenção.')}</textarea></div></div>
+    <div class="form-panel admin-agenda-documents">
+      <h3 style="margin-top:0">Outros anúncios</h3>
+      <label class="form-field"><span>Link da pasta no Google Drive</span><input id="agendaOtherAnnouncementsUrl" class="form-input" type="url" value="${escapeHtml(agendaConfig.outrosAnunciosDriveUrl ?? '')}" placeholder="https://drive.google.com/drive/folders/..."></label>
+      <p class="form-help">Adicione e remova os PDFs diretamente nessa pasta. Para acesso simples, compartilhe-a como “Qualquer pessoa com o link — Leitor”.</p>
+    </div>
     <div style="margin-top:18px">
       <div style="font-size:.8rem;font-weight:600;color:var(--ink-2);margin-bottom:4px;text-transform:uppercase;letter-spacing:.05em">Lembretes do calendário</div>
       <p class="form-help" style="margin-top:0">Cada coluna adiciona um lembrete ao arquivo .ics. Deixe uma ou ambas como “Sem lembrete” quando aquele módulo não precisar avisar.</p>
@@ -1329,53 +1307,9 @@ function renderConfigAgenda(): void {
       </div>
       ${rows}
     </div>
-    <button id="btnSalvarAgendaConfig" class="btn btn-primary btn-full" style="margin-top:16px">Salvar configurações da Agenda</button>
-    <div class="form-panel admin-agenda-documents">
-      <h3 style="margin-top:0">Outros anúncios</h3>
-      <div class="module-form-grid">
-        <label class="form-field"><span>Arquivo PDF</span><input id="agendaPdfFile" type="file" accept="application/pdf,.pdf"></label>
-        <label class="form-field"><span>Nome exibido</span><input id="agendaPdfName" maxlength="100" placeholder="Usar nome do arquivo"></label>
-        <label class="form-field"><span>Período</span><input id="agendaPdfPeriod" type="month" value="${fortalezaCurrentMonth()}"></label>
-      </div>
-      <div class="service-actions"><button id="uploadAgendaPdf" class="btn btn-primary" type="button">Publicar no Quadro</button></div>
-      <p class="form-help">Cada PDF expira 60 dias após a publicação e é excluído automaticamente.</p>
-      <div class="module-option-list" style="margin-top:12px">${manualDocuments.map(item => `<div class="module-list-row"><div><strong>${escapeHtml(item.nome)}</strong><small>${escapeHtml(item.periodo)} · publicado em ${escapeHtml(item.criadoEm.slice(0, 10).split('-').reverse().join('/'))} · expira em ${escapeHtml(new Date(pdfExpiryTime(item.criadoEm) ?? Date.now()).toLocaleDateString('pt-BR', { timeZone:'America/Fortaleza' }))}</small></div><a class="btn btn-ghost" href="${escapeHtml(item.url)}" download="${escapeHtml(item.nome)}">Baixar PDF</a><button class="btn btn-danger" type="button" data-delete-agenda-pdf="${escapeHtml(item.id)}" title="Remover PDF">✕</button></div>`).join('') || '<p class="empty-state">Nenhum PDF enviado manualmente.</p>'}</div>
-    </div>`
+    <button id="btnSalvarAgendaConfig" class="btn btn-primary btn-full" style="margin-top:16px">Salvar configurações da Agenda</button>`
 
   document.getElementById('btnSalvarAgendaConfig')?.addEventListener('click', () => void saveConfigAgenda())
-  document.getElementById('uploadAgendaPdf')?.addEventListener('click', () => void publishSelectedAgendaPdf())
-  document.querySelectorAll<HTMLButtonElement>('[data-delete-agenda-pdf]').forEach(button => button.addEventListener('click', () => void deleteAgendaPdf(button.dataset.deleteAgendaPdf!)))
-}
-
-function selectedAgendaPdf(): File | null {
-  const file = (document.getElementById('agendaPdfFile') as HTMLInputElement | null)?.files?.[0] ?? null
-  if (!file || (!file.name.toLowerCase().endsWith('.pdf') && file.type !== 'application/pdf')) { toast('Selecione um arquivo PDF válido'); return null }
-  if (file.size > 4 * 1024 * 1024) { toast('Cada PDF deve ter no máximo 4 MB'); return null }
-  return file
-}
-
-
-async function publishSelectedAgendaPdf(): Promise<void> {
-  const file = selectedAgendaPdf(); if (!file) return
-  const period = (document.getElementById('agendaPdfPeriod') as HTMLInputElement).value
-  const name = (document.getElementById('agendaPdfName') as HTMLInputElement).value.trim() || file.name
-  if (!/^\d{4}-\d{2}$/.test(period) || !name) { toast('Informe o período e o nome do PDF'); return }
-  setLoading('uploadAgendaPdf', true, 'Publicar no Quadro')
-  try {
-    const { uploadAgendaPdf } = await import('./agenda-documents')
-    const item = await uploadAgendaPdf(file, { modulo:'admin', periodo:period, nome:name.toLowerCase().endsWith('.pdf') ? name : `${name}.pdf` })
-    agendaDocuments[item.id] = item
-    toast('PDF publicado no Quadro')
-    renderConfigAgenda()
-  } catch { toast('Não foi possível publicar o PDF') }
-  finally { setLoading('uploadAgendaPdf', false, 'Publicar no Quadro') }
-}
-
-async function deleteAgendaPdf(documentId: string): Promise<void> {
-  const item = agendaDocuments[documentId]
-  if (!item || item.modulo !== 'admin' || !confirm(`Remover "${item.nome}" do Quadro?`)) return
-  try { const { removeAgendaDocument } = await import('./agenda-documents'); await removeAgendaDocument(item); delete agendaDocuments[documentId]; toast('PDF removido do Quadro'); renderConfigAgenda() }
-  catch { toast('Não foi possível remover o PDF') }
 }
 
 function normalizedReminderValues(values: string[]): string[] {
@@ -1386,6 +1320,8 @@ async function saveConfigAgenda(): Promise<void> {
   const moduleWhatsApp: NonNullable<AgendaConfig['moduleWhatsApp']> = { ...(agendaConfig.moduleWhatsApp ?? {}) }
   const groupLink = (document.getElementById('agendaWhatsLink_quadro') as HTMLInputElement).value.trim()
   if (groupLink && !/^https:\/\/(chat\.)?whatsapp\.com\//i.test(groupLink)) { toast('Use um link válido do WhatsApp no Quadro'); return }
+  const outrosAnunciosDriveUrl = (document.getElementById('agendaOtherAnnouncementsUrl') as HTMLInputElement).value.trim()
+  if (outrosAnunciosDriveUrl && !/^https:\/\/drive\.google\.com\/drive\/(?:u\/\d+\/)?folders\/[^/?#]+/i.test(outrosAnunciosDriveUrl)) { toast('Use o link de uma pasta do Google Drive'); return }
   moduleWhatsApp.quadro = {
     ...(moduleWhatsApp.quadro ?? {}),
     groupLink,
@@ -1405,12 +1341,14 @@ async function saveConfigAgenda(): Promise<void> {
   try {
     await update(agendaConfigRef, {
       quadroWhatsAppLink:groupLink,
+      outrosAnunciosDriveUrl:outrosAnunciosDriveUrl || null,
       'moduleWhatsApp/quadro':quadroSettings,
       icsReminders,
     })
     agendaConfig = {
       ...agendaConfig,
       quadroWhatsAppLink:groupLink,
+      outrosAnunciosDriveUrl:outrosAnunciosDriveUrl || undefined,
       moduleWhatsApp:{ ...(agendaConfig.moduleWhatsApp ?? {}), quadro:quadroSettings },
       icsReminders,
     }

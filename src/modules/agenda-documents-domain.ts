@@ -6,11 +6,9 @@ export type PublicPdfModule = typeof PUBLIC_PDF_MODULES[number]
 
 export interface PublicDocumentGroups {
   modules: Partial<Record<PublicPdfModule, AgendaPublicDocument>>
-  admin: AgendaPublicDocument[]
 }
 
 const validMonth = (value: string): boolean => /^\d{4}-(0[1-9]|1[0-2])$/.test(value)
-const documentKind = (item: AgendaPublicDocument): 'modulo' | 'admin' => item.tipo ?? (item.modulo === 'admin' ? 'admin' : 'modulo')
 
 export function safeDocumentKey(value: string): string {
   return value.normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-zA-Z0-9._-]/g, '-').replace(/-+/g, '-').replace(/^-|-$/g, '')
@@ -30,24 +28,18 @@ export function documentCoversMonth(item: AgendaPublicDocument, month: string): 
 
 export function groupPublicDocuments(documents: AgendaPublicDocument[], month: string, now = Date.now()): PublicDocumentGroups {
   const modules: Partial<Record<PublicPdfModule, AgendaPublicDocument>> = {}
-  const admin: AgendaPublicDocument[] = []
   documents.filter(item => !pdfHasExpired(item.criadoEm, now) && documentCoversMonth(item, month)).forEach(item => {
-    if (documentKind(item) === 'admin' || item.modulo === 'admin') {
-      admin.push(item)
-      return
-    }
     if (!PUBLIC_PDF_MODULES.includes(item.modulo as PublicPdfModule)) return
     const module = item.modulo as PublicPdfModule
     const current = modules[module]
     if (!current || item.criadoEm > current.criadoEm) modules[module] = item
   })
-  admin.sort((a, b) => b.criadoEm.localeCompare(a.criadoEm) || a.nome.localeCompare(b.nome, 'pt-BR'))
-  return { modules, admin }
+  return { modules }
 }
 
 export function publicDocumentMonths(documents: AgendaPublicDocument[], now = Date.now()): string[] {
   const result = new Set<string>()
-  documents.filter(item => !pdfHasExpired(item.criadoEm, now)).forEach(item => {
+  documents.filter(item => PUBLIC_PDF_MODULES.includes(item.modulo as PublicPdfModule) && !pdfHasExpired(item.criadoEm, now)).forEach(item => {
     const start = item.inicio?.slice(0, 7)
     const end = item.fim?.slice(0, 7)
     if (!validMonth(start ?? '') || !validMonth(end ?? '') || start! > end!) {

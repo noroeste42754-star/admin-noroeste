@@ -5,7 +5,7 @@ import type { AgendaEvent, AgendaSource, AgendaStatus, AnnouncementEvent } from 
 const SOURCES = new Set<AgendaSource>(['tarefas', 'oradores', 'limpeza', 'escala', 'servicoCampo'])
 const STATUSES = new Set<AgendaStatus>(['futuro', 'confirmacao-pendente', 'alterado', 'realizado'])
 const REMINDER_MODULES = new Set<AgendaReminderModule>([...SOURCES, 'oradores', 'quadro'])
-const DOCUMENT_MODULES = new Set(['tarefas', 'oradores', 'limpeza', 'escala', 'servicoCampo', 'admin'])
+const DOCUMENT_MODULES = new Set(['tarefas', 'oradores', 'limpeza', 'escala', 'servicoCampo'])
 const reminderPattern = /^P(?:\d+D)?(?:T\d+[HM])?$/
 
 const text = (value: unknown, maximum: number): string => typeof value === 'string' ? value.trim().slice(0, maximum) : ''
@@ -60,6 +60,8 @@ export function publicAgendaConfig(value: unknown): AgendaConfig {
   const source = value as Record<string, unknown>, result: AgendaConfig = {}
   const legacyLink = httpsUrl(source['quadroWhatsAppLink'])
   if (legacyLink) result.quadroWhatsAppLink = legacyLink
+  const outrosAnunciosDriveUrl = httpsUrl(source['outrosAnunciosDriveUrl'])
+  if (outrosAnunciosDriveUrl) result.outrosAnunciosDriveUrl = outrosAnunciosDriveUrl
 
   const moduleWhatsApp = source['moduleWhatsApp']
   if (moduleWhatsApp && typeof moduleWhatsApp === 'object' && !Array.isArray(moduleWhatsApp)) {
