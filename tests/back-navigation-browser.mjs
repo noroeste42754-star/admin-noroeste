@@ -24,7 +24,7 @@ try {
       for (const module of ['limpeza', 'servicoCampo', 'tarefas', 'escala', 'mestre', 'individual']) {
         await page.locator(`[data-menu-card="${module}"]`).click()
         if (module === 'limpeza') await page.locator('#btnGerarEscalaLimpeza').waitFor({ state:'attached' })
-        if (module === 'individual') await page.getByRole('tab', { name:'Pessoal', exact:true }).waitFor()
+        if (module === 'individual') await page.getByRole('heading', { name:'Próximas designações' }).waitFor()
         if (module === 'servicoCampo') {
           await page.locator('[data-workspace-tab="configuracao"]').click()
           await page.locator('#serviceTemplateForm').waitFor({ state:'attached' })

@@ -54,7 +54,7 @@ import { formatTaskDate } from './tarefas-output'
 import { publishModulePeriod, renderPublicationStatus } from './module-publication'
 import { defaultModuleMessageSettings, mountModuleMessageSettings, type ModuleMessageSettings } from './module-message-settings'
 
-type TarefasTab = 'indice' | 'resumo' | 'escala' | 'participantes' | 'pendencias' | 'config'
+type TarefasTab = 'indice' | 'escala' | 'participantes' | 'pendencias' | 'config'
 
 const PRINT_FONT_KEY = 'noroeste_tarefas_print_font_pt'
 const PRINT_MIN_PT = 8
@@ -291,8 +291,7 @@ function renderContent(): void {
     renderIndex()
     return
   }
-  if (activeTab === 'resumo') renderIndex()
-  else if (activeTab === 'escala') renderEscala()
+  if (activeTab === 'escala') renderEscala()
   else if (activeTab === 'participantes') renderParticipantes()
   else if (activeTab === 'pendencias') renderPendencias()
   else renderTaskConfig()

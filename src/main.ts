@@ -198,7 +198,7 @@ async function init(): Promise<void> {
     if (usuarios[previous]?.ativo) selectUsuario.value = previous
     carregandoUsuarios = false
     loginError.textContent = ''
-    setStatus('Conectado ao Firebase ✓')
+    setStatus('Lista de usuários atualizada')
   }).catch(() => {
     carregandoUsuarios = false
     setStatus('Não foi possível atualizar a lista de usuários')
