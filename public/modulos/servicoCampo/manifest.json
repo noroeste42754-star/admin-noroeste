@@ -1,0 +1,24 @@
+{
+  "id": "/modulos/servicoCampo/",
+  "name": "Serviço de Campo — Noroeste",
+  "short_name": "Serviço de Campo",
+  "description": "Módulo Serviço de Campo do Noroeste",
+  "start_url": "/modulos/servicoCampo/",
+  "scope": "/modulos/servicoCampo/",
+  "display": "standalone",
+  "background_color": "#F4F7FA",
+  "theme_color": "#8A5A00",
+  "icons": [
+    { "src": "/modulos/servicoCampo/icon.svg", "sizes": "any", "type": "image/svg+xml" },
+    {
+      "src": "/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ]
+}

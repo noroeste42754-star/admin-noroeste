@@ -1,4 +1,17 @@
 let csrfToken = ''
+const APP_INSTALLATION_KEY = 'noroeste_module_installation_v1'
+const AGENDA_DEVICE_KEY = 'noroeste_agenda_device_token_v1'
+
+export function saveAppInstallationToken(value: string): void {
+  if (/^[a-f0-9]{64}$/.test(value)) try { localStorage.setItem(APP_INSTALLATION_KEY, value) } catch { /* O cookie continua disponível. */ }
+}
+
+export function saveAgendaDeviceToken(value: string): void {
+  if (/^[a-f0-9]{64}$/.test(value)) try { localStorage.setItem(AGENDA_DEVICE_KEY, value) } catch { /* O cookie continua disponível. */ }
+}
+
+export function clearAppInstallationToken(): void { try { localStorage.removeItem(APP_INSTALLATION_KEY) } catch { /* Sem armazenamento local. */ } }
+export function clearAgendaDeviceToken(): void { try { localStorage.removeItem(AGENDA_DEVICE_KEY) } catch { /* Sem armazenamento local. */ } }
 
 export class ApiError extends Error {
   readonly status: number
@@ -19,6 +32,14 @@ export function clearCsrfToken(): void {
 
 export async function apiJson<T>(name: string, init: RequestInit = {}): Promise<T> {
   const headers = new Headers(init.headers)
+  if (typeof localStorage !== 'undefined') {
+    try {
+      const installation = localStorage.getItem(APP_INSTALLATION_KEY)
+      const agendaDevice = localStorage.getItem(AGENDA_DEVICE_KEY)
+      if (installation && /^[a-f0-9]{64}$/.test(installation)) headers.set('x-noroeste-installation', installation)
+      if (agendaDevice && /^[a-f0-9]{64}$/.test(agendaDevice)) headers.set('x-noroeste-device', agendaDevice)
+    } catch { /* A API ainda pode usar o cookie. */ }
+  }
   if (init.body && !headers.has('content-type')) headers.set('content-type', 'application/json')
   if (init.method && init.method !== 'GET' && csrfToken) headers.set('x-noroeste-csrf', csrfToken)
   const controller = new AbortController()

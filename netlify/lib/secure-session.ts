@@ -3,15 +3,15 @@ import { adminDatabase } from './subscription-store.ts'
 
 const APP_COOKIE = 'noroeste_session'
 const DEVICE_COOKIE = 'noroeste_device'
-const APP_SESSION_MS = 12 * 60 * 60 * 1000
-const DEVICE_SESSION_MS = 90 * 24 * 60 * 60 * 1000
+// Browsers cap persistent cookies; the server-side installation has no deadline.
+const INSTALLATION_COOKIE_MS = 400 * 24 * 60 * 60 * 1000
 const ATTEMPT_WINDOW_MS = 10 * 60 * 1000
 const ATTEMPT_BLOCK_MS = 30 * 1000
 const MAX_ATTEMPTS = 5
 
 interface SafeUser extends Omit<Usuario, 'senha'> { senha: '' }
-export interface AppSession { token: string; csrf: string; uid: string; expiresAt: number; usuario: SafeUser }
-export interface DeviceSession { token: string; masterId: string; installationId: string; expiresAt: number }
+export interface AppSession { token: string; csrf: string; uid: string; expiresAt?: number; usuario: SafeUser }
+export interface DeviceSession { token: string; masterId: string; installationId: string; expiresAt?: number; revoked?: boolean }
 interface LoginAttempt { count: number; firstAt: number; blockedUntil: number; expiresAt: number }
 
 function randomHex(bytes: number): string {
@@ -70,11 +70,11 @@ export async function clearLoginFailures(request: Request, scope: string): Promi
 }
 
 export function renewDeviceCookie(session:DeviceSession):string {
-  return secureCookie(DEVICE_COOKIE,session.token,DEVICE_SESSION_MS)
+  return secureCookie(DEVICE_COOKIE,session.token,INSTALLATION_COOKIE_MS)
 }
 
-export async function renewDeviceSession(session:DeviceSession):Promise<void> {
-  await adminDatabase().ref(`agendaDispositivosPrivados/${session.token}/expiresAt`).set(Date.now()+DEVICE_SESSION_MS)
+export function renewAppCookie(session:AppSession):string {
+  return secureCookie(APP_COOKIE,session.token,INSTALLATION_COOKIE_MS)
 }
 
 function safeUser(user: Usuario): SafeUser {
@@ -111,31 +111,31 @@ export async function verifyAdminPassword(password: string): Promise<boolean> {
 
 export async function createAppSession(uid: string, usuario: SafeUser): Promise<{ session: AppSession; cookie: string }> {
   const token = randomHex(32)
-  const session: AppSession = { token, csrf:randomHex(24), uid, usuario, expiresAt:Date.now() + APP_SESSION_MS }
+  const session: AppSession = { token, csrf:randomHex(24), uid, usuario }
   await adminDatabase().ref(`appSessoesPrivadas/${token}`).set(session)
-  return { session, cookie:secureCookie(APP_COOKIE, token, APP_SESSION_MS) }
+  return { session, cookie:renewAppCookie(session) }
 }
 
 export async function appSession(request: Request): Promise<AppSession | null> {
-  const token = cookieValue(request, APP_COOKIE)
-  if (!/^[a-f0-9]{64}$/.test(token)) return null
-  const snapshot = await adminDatabase().ref(`appSessoesPrivadas/${token}`).get()
-  if (!snapshot.exists()) return null
-  const session = snapshot.val() as AppSession
-  if (session.token !== token || session.expiresAt <= Date.now()) {
-    await adminDatabase().ref(`appSessoesPrivadas/${token}`).remove()
-    return null
+  const candidates=[...new Set([request.headers.get('x-noroeste-installation'),cookieValue(request, APP_COOKIE)].filter((token):token is string=>Boolean(token)))]
+  for(const token of candidates) {
+    if (!/^[a-f0-9]{64}$/.test(token)) continue
+    const snapshot = await adminDatabase().ref(`appSessoesPrivadas/${token}`).get()
+    if (!snapshot.exists()) continue
+    const session = snapshot.val() as AppSession
+    if (session.token !== token) continue
+    const userSnapshot = await adminDatabase().ref(`usuarios/${session.uid}`).get()
+    if (!userSnapshot.exists()) continue
+    const user = userSnapshot.val() as Usuario
+    if (!user.ativo) continue
+    return { ...session, usuario:safeUser(user) }
   }
-  const userSnapshot = await adminDatabase().ref(`usuarios/${session.uid}`).get()
-  if (!userSnapshot.exists()) return null
-  const user = userSnapshot.val() as Usuario
-  if (!user.ativo) return null
-  return { ...session, usuario:safeUser(user) }
+  return null
 }
 
 export async function destroyAppSession(request: Request): Promise<void> {
-  const token = cookieValue(request, APP_COOKIE)
-  if (/^[a-f0-9]{64}$/.test(token)) await adminDatabase().ref(`appSessoesPrivadas/${token}`).remove()
+  const candidates=[...new Set([request.headers.get('x-noroeste-installation'),cookieValue(request, APP_COOKIE)])]
+  await Promise.all(candidates.filter((token):token is string=>Boolean(token && /^[a-f0-9]{64}$/.test(token))).map(token=>adminDatabase().ref(`appSessoesPrivadas/${token}`).remove()))
 }
 
 export function validCsrf(request: Request, session: AppSession): boolean {
@@ -144,27 +144,31 @@ export function validCsrf(request: Request, session: AppSession): boolean {
 
 export async function createDeviceSession(masterId: string, installationId: string): Promise<{ session: DeviceSession; cookie: string }> {
   const token = randomHex(32)
-  const session: DeviceSession = { token, masterId, installationId, expiresAt:Date.now() + DEVICE_SESSION_MS }
+  const session: DeviceSession = { token, masterId, installationId }
   await adminDatabase().ref(`agendaDispositivosPrivados/${token}`).set(session)
-  return { session, cookie:secureCookie(DEVICE_COOKIE, token, DEVICE_SESSION_MS) }
+  return { session, cookie:renewDeviceCookie(session) }
 }
 
 export async function deviceSession(request: Request): Promise<DeviceSession | null> {
-  const token = cookieValue(request, DEVICE_COOKIE)
-  if (!/^[a-f0-9]{64}$/.test(token)) return null
-  const snapshot = await adminDatabase().ref(`agendaDispositivosPrivados/${token}`).get()
-  if (!snapshot.exists()) return null
-  const session = snapshot.val() as DeviceSession
-  if (session.token !== token || session.expiresAt <= Date.now()) {
-    await adminDatabase().ref(`agendaDispositivosPrivados/${token}`).remove()
-    return null
+  const session = await deviceSessionRecord(request)
+  return session && !session.revoked ? session : null
+}
+
+export async function deviceSessionRecord(request: Request): Promise<DeviceSession | null> {
+  const candidates=[...new Set([request.headers.get('x-noroeste-device'),cookieValue(request, DEVICE_COOKIE)].filter((token):token is string=>Boolean(token)))]
+  for(const token of candidates) {
+    if (!/^[a-f0-9]{64}$/.test(token)) continue
+    const snapshot = await adminDatabase().ref(`agendaDispositivosPrivados/${token}`).get()
+    if (!snapshot.exists()) continue
+    const session = snapshot.val() as DeviceSession
+    if (session.token === token) return session
   }
-  return session
+  return null
 }
 
 export async function destroyDeviceSession(request: Request): Promise<void> {
-  const token = cookieValue(request, DEVICE_COOKIE)
-  if (/^[a-f0-9]{64}$/.test(token)) await adminDatabase().ref(`agendaDispositivosPrivados/${token}`).remove()
+  const candidates=[...new Set([request.headers.get('x-noroeste-device'),cookieValue(request, DEVICE_COOKIE)])]
+  await Promise.all(candidates.filter((token):token is string=>Boolean(token && /^[a-f0-9]{64}$/.test(token))).map(token=>adminDatabase().ref(`agendaDispositivosPrivados/${token}`).remove()))
 }
 
 export const json = (status: number, value: unknown, headers: Record<string, string> = {}): Response => new Response(JSON.stringify(value), {

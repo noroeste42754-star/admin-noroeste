@@ -1,9 +1,9 @@
-import type { AppContext, ModuleName, AppPermissions } from './types'
+import type { AppContext, ModuleName } from './types'
 import { renderMenuCards, type ItemMenu } from './ui/menu-cards'
 
 // ─── Mapa de módulos ────────────────────────────────────────────────────────
 
-const MODULE_META: Record<
+export const MODULE_META: Record<
   ModuleName,
   { label: string; desc: string; icon: string; color: string }
 > = {
@@ -19,6 +19,19 @@ const MODULE_META: Record<
 const MODULES_ORDER: ModuleName[] = [
   'mestre', 'servicoCampo', 'tarefas', 'oradores', 'limpeza', 'escala', 'individual',
 ]
+
+export const INSTALLABLE_MODULES: ModuleName[] = MODULES_ORDER.filter(module => module !== 'individual')
+
+export function moduleFromPath(pathname: string): ModuleName | null {
+  const match=pathname.match(/^\/modulos\/(mestre|tarefas|oradores|limpeza|escala|servicoCampo)\/?$/)
+  return match ? match[1] as ModuleName : null
+}
+
+export function accessibleModules(usuario: import('./types').Usuario): ModuleName[] {
+  return usuario.apps.mestre
+    ? MODULES_ORDER
+    : MODULES_ORDER.filter(module => usuario.apps[module] === true || (module === 'individual' && Boolean(usuario.masterId)))
+}
 
 // ─── Lazy loaders ───────────────────────────────────────────────────────────
 
@@ -99,11 +112,15 @@ export function routeState(): { moduleOpen: boolean; canReturnToModules: boolean
 export function initRouter(uid: string, usuario: import('./types').Usuario): void {
   _ctx = { uid, usuario }
 
-  // apps.mestre = Admin → acesso total a todos os módulos
-  const accessList = usuario.apps.mestre
-    ? MODULES_ORDER
-    : MODULES_ORDER.filter((m) => hasAccess(usuario.apps, m) || (m === 'individual' && Boolean(usuario.masterId)))
+  const accessList = accessibleModules(usuario)
   _accessList = accessList
+
+  const directModule=moduleFromPath(location.pathname)
+  if(directModule) {
+    if(accessList.includes(directModule)) void navigateTo(directModule)
+    else document.getElementById('appContent')!.innerHTML = '<div class="module-placeholder"><h2>Sem acesso</h2><p>Este módulo não está habilitado para você.</p></div>'
+    return
+  }
 
   if (accessList.length === 0) {
     document.getElementById('appContent')!.innerHTML = `
@@ -123,10 +140,6 @@ export function initRouter(uid: string, usuario: import('./types').Usuario): voi
 }
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
-
-function hasAccess(apps: AppPermissions, m: ModuleName): boolean {
-  return apps[m] === true
-}
 
 function renderMenu(list: ModuleName[]): void {
   navigationId++

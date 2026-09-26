@@ -14,7 +14,7 @@ import {
   loadCachedUserChoices,
   restoreSession,
 } from './auth'
-import { initRouter, navigateBack, navigateModuleIndex, routeState } from './router'
+import { accessibleModules, initRouter, INSTALLABLE_MODULES, MODULE_META, moduleFromPath, navigateBack, navigateModuleIndex, routeState } from './router'
 import type { Usuario } from './types'
 import type { CachedUserChoices } from './auth-domain'
 import { animateKpis } from './ui/animations'
@@ -36,6 +36,39 @@ const toast         = document.getElementById('toast')!
 
 let usuariosDisponiveis: CachedUserChoices = {}
 let carregandoUsuarios = true
+let installPrompt: (Event & { prompt(): Promise<void>; userChoice: Promise<{ outcome:string }> }) | null = null
+let installedThisPage = false
+
+function isStandalone(): boolean {
+  return window.matchMedia('(display-mode: standalone)').matches || (navigator as Navigator & { standalone?:boolean }).standalone === true
+}
+
+function renderInstallOffer(usuario: Usuario): void {
+  document.getElementById('moduleInstallOffer')?.remove()
+  if(isStandalone() || installedThisPage)return
+  const modules=accessibleModules(usuario).filter(module=>INSTALLABLE_MODULES.includes(module))
+  if(!modules.length)return
+  const direct=moduleFromPath(location.pathname)
+  if(direct && !modules.includes(direct))return
+  const offer=document.createElement('aside')
+  offer.id='moduleInstallOffer'
+  offer.className='module-install-offer'
+  if(direct) {
+    offer.innerHTML=`<span>Abra ${MODULE_META[direct].label} direto pela tela inicial.</span><button id="installCurrentModule" class="btn btn-primary" type="button">Instalar ${MODULE_META[direct].label}</button>`
+    offer.querySelector<HTMLButtonElement>('#installCurrentModule')?.addEventListener('click',async()=>{
+      if(!installPrompt) {
+        alert('No navegador, escolha “Instalar aplicativo” ou “Adicionar à tela inicial”. No iPhone, use Compartilhar → Adicionar à Tela de Início.')
+        return
+      }
+      const prompt=installPrompt;installPrompt=null
+      await prompt.prompt();await prompt.userChoice
+    })
+  } else {
+    const links=modules.map(module=>`<a class="btn btn-ghost" href="/modulos/${module}/">${MODULE_META[module].icon} Instalar ${MODULE_META[module].label}</a>`).join('')
+    offer.innerHTML=modules.length===1 ? `<span>Instale seu módulo para abrir direto.</span>${links}` : `<details><summary>Instalar módulos neste aparelho</summary><div class="module-install-links">${links}</div></details>`
+  }
+  appShell.insertBefore(offer,document.getElementById('appContent'))
+}
 
 // ─── Toast ──────────────────────────────────────────────────────────────────
 
@@ -57,9 +90,11 @@ function setStatus(text: string): void {
 // ─── Exibir app shell ────────────────────────────────────────────────────────
 
 function showApp(usuario: Usuario): void {
+  document.getElementById('startupSplash')?.remove()
   loginOverlay.classList.add('hidden')
   appShell.classList.remove('hidden')
   bottomUser.textContent = usuario.nome
+  renderInstallOffer(usuario)
 }
 
 // ─── Select de usuário ───────────────────────────────────────────────────────
@@ -163,7 +198,7 @@ function syncBottomNavigation(): void {
   btnBack.textContent = '← Voltar'
   btnBack.title = insideModuleScreen ? 'Voltar ao início do módulo' : 'Voltar aos módulos'
   btnBack.classList.toggle('hidden', !canBack)
-  btnSair.classList.toggle('hidden', canBack)
+  btnSair.classList.toggle('hidden', canBack || isStandalone() && Boolean(moduleFromPath(location.pathname)))
 }
 
 const kpiObserver = new MutationObserver(() => { animateKpis(document); syncBottomNavigation() })
@@ -172,7 +207,7 @@ kpiObserver.observe(document.getElementById('appContent')!, { childList: true, s
 // ─── Bootstrap ──────────────────────────────────────────────────────────────
 
 async function init(): Promise<void> {
-  setStatus('Carregando dados…')
+  setStatus('Abrindo aplicativo…')
 
   const cachedChoices = loadCachedUserChoices()
   if (Object.keys(cachedChoices).length > 0) populateUsuarioSelect(cachedChoices)
@@ -189,7 +224,10 @@ async function init(): Promise<void> {
     loginError.textContent = ''
   })
 
-  // A sessao existente nao depende da lista usada no formulario de login.
+  // A instalação já autorizada abre diretamente; a lista só é necessária no login inicial.
+  const restored = await tryRestoreSession()
+  if (restored) { setStatus('Pronto'); return }
+
   carregandoUsuarios = Object.keys(cachedChoices).length === 0
   void loadUsuarios().then(usuarios => {
     usuariosDisponiveis = usuarios
@@ -207,11 +245,8 @@ async function init(): Promise<void> {
     }
   })
 
-  // Tenta restaurar sessão
-  const restored = await tryRestoreSession()
-  if (restored) return
-
   // Exibe login
+  document.getElementById('startupSplash')?.remove()
   loginOverlay.classList.remove('hidden')
   if (Object.keys(cachedChoices).length === 0 && Object.keys(usuariosDisponiveis).length === 0) populateUsuarioSelect(usuariosDisponiveis)
   selectUsuario.focus()
@@ -221,17 +256,28 @@ async function init(): Promise<void> {
 
 btnSair.addEventListener('click', () => void handleSair())
 btnBack.addEventListener('click', handleBack)
+window.addEventListener('online',()=>{
+  if(appShell.classList.contains('hidden'))void tryRestoreSession().then(restored=>{if(restored)setStatus('Pronto')})
+})
 
 window.addEventListener('app-route-change', (event) => {
   const detail = (event as CustomEvent<{ canBack: boolean }>).detail
   const canBack = detail?.canBack === true
   btnBack.classList.toggle('hidden', !canBack)
-  btnSair.classList.toggle('hidden', canBack)
+  btnSair.classList.toggle('hidden', canBack || isStandalone() && Boolean(moduleFromPath(location.pathname)))
   queueMicrotask(syncBottomNavigation)
 })
 
 // ─── Start ───────────────────────────────────────────────────────────────────
 
+window.addEventListener('beforeinstallprompt', event => {
+  event.preventDefault()
+  installPrompt=event as typeof installPrompt
+})
+window.addEventListener('appinstalled',()=>{
+  installedThisPage=true
+  document.getElementById('moduleInstallOffer')?.remove()
+})
 void init()
 
 // ─── Service Worker (PWA) ─────────────────────────────────────────────────────

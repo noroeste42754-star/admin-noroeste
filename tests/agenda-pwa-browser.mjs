@@ -70,10 +70,12 @@ try {
       await navigator.serviceWorker.ready
     })
     await page.waitForFunction(() => !!navigator.serviceWorker.controller)
+    const statusRefresh=page.waitForResponse(response=>response.url().endsWith('/agenda-device')&&response.request().method()==='GET')
     await page.reload()
+    await statusRefresh
     await page.getByRole('heading', { name:'Próximas designações' }).waitFor()
-    const beforeOffline = calls.length
     await context.close()
+    const beforeOffline = calls.length
     context = await launch()
     await context.setOffline(true)
     page = context.pages()[0]; attach(page)
@@ -82,7 +84,7 @@ try {
     await page.getByRole('button', { name:'Anúncios e PDFs', exact:true }).click()
     assert.equal(await page.getByText('PDFs dos módulos', { exact:true }).locator('xpath=../..').getAttribute('open'), '')
     assert.equal(await page.getByRole('tab', { name:'Relatório', exact:true }).count(), 0)
-    assert.equal(calls.length, beforeOffline)
+    assert.equal(calls.slice(beforeOffline).filter(call=>call.includes('/agenda-data')).length,0)
     assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false)
     await page.screenshot({ path:`.netlify/agenda-pwa-offline-${viewport.width}.png`, fullPage:true })
     await context.setOffline(false)

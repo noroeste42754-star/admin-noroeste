@@ -12,6 +12,12 @@ export function deleteUnreferencedMasterPerson(current:unknown,mid:string):unkno
   // The person's own key is not a reference.
   const copy=structuredClone(root)
   delete copy.master.pessoas[mid]
-  if(references(copy,[])) return undefined
+  // A paired phone must not prevent deletion. Revoke it in the same transaction.
+  const devices=copy.agendaDispositivosPrivados as Record<string,Record<string,unknown>>|undefined
+  for(const device of Object.values(devices??{})) if(device?.masterId===mid) device.revoked=true
+  const sessions=copy.appSessoesPrivadas as Record<string,Record<string,any>>|undefined
+  for(const [token,session] of Object.entries(sessions??{})) if(session?.uid===mid||session?.usuario?.masterId===mid) delete sessions![token]
+  const {agendaDispositivosPrivados:_devices,appSessoesPrivadas:_sessions,...linkedRoot}=copy
+  if(references(linkedRoot,[])) return undefined
   return copy
 }

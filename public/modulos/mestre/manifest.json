@@ -1,0 +1,24 @@
+{
+  "id": "/modulos/mestre/",
+  "name": "Admin — Noroeste",
+  "short_name": "Admin",
+  "description": "Módulo Admin do Noroeste",
+  "start_url": "/modulos/mestre/",
+  "scope": "/modulos/mestre/",
+  "display": "standalone",
+  "background_color": "#F4F7FA",
+  "theme_color": "#003F72",
+  "icons": [
+    { "src": "/modulos/mestre/icon.svg", "sizes": "any", "type": "image/svg+xml" },
+    {
+      "src": "/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ]
+}

@@ -1,0 +1,24 @@
+{
+  "id": "/modulos/limpeza/",
+  "name": "Limpeza — Noroeste",
+  "short_name": "Limpeza",
+  "description": "Módulo Limpeza do Noroeste",
+  "start_url": "/modulos/limpeza/",
+  "scope": "/modulos/limpeza/",
+  "display": "standalone",
+  "background_color": "#F4F7FA",
+  "theme_color": "#006EB6",
+  "icons": [
+    { "src": "/modulos/limpeza/icon.svg", "sizes": "any", "type": "image/svg+xml" },
+    {
+      "src": "/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ]
+}

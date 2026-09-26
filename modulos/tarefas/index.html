@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="theme-color" content="#7E3AF2" />
+  <title>Tarefas — Noroeste</title>
+  <link rel="icon" href="/modulos/tarefas/icon.svg" type="image/svg+xml" />
+  <link rel="manifest" href="/modulos/tarefas/manifest.json" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <link rel="stylesheet" href="/src/style.css" />
+</head>
+<body>
+  <div id="startupSplash" role="status">Abrindo Noroeste…</div>
+  <div id="loginOverlay" class="hidden">
+    <form id="loginBox">
+      <h1>Noroeste</h1>
+      <p class="subtitle">Tarefas</p>
+      <div class="form-group"><label class="form-label" for="selectUsuario">Usuário</label><select id="selectUsuario" class="form-select" disabled><option value="">Carregando…</option></select></div>
+      <div class="form-group"><label class="form-label" for="inputSenha">Senha</label><input id="inputSenha" class="form-input" type="password" autocomplete="current-password" placeholder="••••••" /></div>
+      <p id="loginError"></p>
+      <button id="btnEntrar" class="btn btn-primary btn-full" type="submit">Entrar</button>
+    </form>
+  </div>
+  <div id="appShell" class="hidden">
+    <main id="appContent"></main>
+    <nav id="bottomBar">
+      <button id="btnBack" class="bottom-nav-btn hidden" type="button" title="Voltar">← Voltar</button>
+      <button id="btnSair" class="bottom-nav-btn bottom-nav-exit" type="button" title="Sair">Sair</button>
+      <span id="bottomBrand">NOROESTE</span><span id="bottomUser"></span><span class="bottom-nav-spacer"></span>
+    </nav>
+    <div id="statusBar">Conectando…</div>
+  </div>
+  <div id="toast"></div>
+  <script type="module" src="/src/main.ts"></script>
+</body>
+</html>

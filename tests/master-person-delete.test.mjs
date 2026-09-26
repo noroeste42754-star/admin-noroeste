@@ -17,3 +17,16 @@ test('exclusão detecta identidade usada como chave e histórico aninhado',()=>{
     assert.equal(deleteUnreferencedMasterPerson({master:{pessoas:{m1:{name:'Pessoa'}}},...extra},'m1'),undefined)
   }
 })
+
+test('exclusão revoga a agenda instalada e remove sessões antigas sem bloquear a pessoa',()=>{
+  const root={
+    master:{pessoas:{m1:{name:'Pessoa'}}},
+    agendaDispositivosPrivados:{device:{token:'device',masterId:'m1',installationId:'abc'}},
+    appSessoesPrivadas:{session:{uid:'m1',usuario:{masterId:'m1'}}},
+  }
+  const next=deleteUnreferencedMasterPerson(root,'m1')
+  assert.equal(next.master.pessoas.m1,undefined)
+  assert.equal(next.agendaDispositivosPrivados.device.revoked,true)
+  assert.equal(next.appSessoesPrivadas.session,undefined)
+  assert.equal(root.agendaDispositivosPrivados.device.revoked,undefined)
+})

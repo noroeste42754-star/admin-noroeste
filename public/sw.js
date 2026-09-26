@@ -1,4 +1,4 @@
-const CACHE = 'noroeste-admin-v5'
+const CACHE = 'noroeste-admin-v6'
 const ASSETS = ['/', '/index.html'] // vite adiciona o resto no build
 
 const cacheableAsset = path => path.startsWith('/assets/') || ['/manifest.json', '/icon-192.png', '/icon-512.png'].includes(path)
@@ -26,6 +26,11 @@ self.addEventListener('message', e => {
 
 self.addEventListener('fetch', e => {
   if (e.request.mode === 'navigate') {
+    const path = new URL(e.request.url).pathname
+    if (path !== '/' && path !== '/index.html') {
+      e.respondWith(fetch(e.request))
+      return
+    }
     e.respondWith(
       fetch(e.request)
         .then(response => {

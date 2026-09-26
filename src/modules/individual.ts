@@ -3,7 +3,7 @@ import { parseAgendaHistory, updateAgendaHistory, type AgendaHistory } from './a
 import { addCivilDays, fortalezaToday, fortalezaCurrentMonth } from './civil-date'
 import { AGENDA_SOURCES, mergeAgendaSources } from './agenda-sync'
 import { get, pessoasRef } from '../firebase'
-import { apiJson } from '../secure-api.ts'
+import { apiJson, ApiError } from '../secure-api.ts'
 import { moduleTitle } from '../ui/module-header'
 import { agendaMessage, agendaToIcs, boardCleaningMessage, boardMeetingDates, boardMeetingEvents, boardMeetingMessage, collectAgendaEvents, collectAnnouncementEvents, upcomingAgendaEvents, type AgendaEvent, type AgendaSource, type AgendaStatus, type AnnouncementEvent } from './individual-domain'
 import type { AgendaConfig, AgendaPublicDocument, MasterPessoa } from '../types'
@@ -14,6 +14,7 @@ let ctx: AppContext | null = null
 let data: RawRoot = {}
 let month = fortalezaCurrentMonth()
 let failedSources:string[]=[]
+let accessRevoked=false
 let syncGeneration=0
 let screen: 'agenda' | 'geral' | 'quadro' = 'agenda'
 let generalSelectedDate = ''
@@ -64,6 +65,7 @@ export default function mount(context: AppContext): void {
   syncGeneration++
   lastSuccessfulSync=null
   failedSources=[]
+  accessRevoked=false
   data={}
   uiPreferencesKey = ''
   uiPreferences = defaultAgendaUiPreferences(fortalezaDate().slice(0, 7))
@@ -182,6 +184,7 @@ function saveOfflineCache(): void {
 }
 
 async function load(retrySources?:string[]):Promise<void> {
+  if(accessRevoked)return
   const generation=++syncGeneration
   loadingAssignments=true
   try {
@@ -208,14 +211,23 @@ async function load(retrySources?:string[]):Promise<void> {
       recordAgendaHistory(masterId,offlinePersonalEvents)
       saveOfflineCache()
     }
-  }catch(error){console.warn('Falha ao sincronizar a agenda:',error instanceof Error?error.message:'erro desconhecido');if(generation===syncGeneration)failedSources=[...new Set([...failedSources,...(retrySources??AGENDA_SOURCES)])]}
+  }catch(error){
+    if(standaloneAgenda()&&error instanceof ApiError&&error.status===403){accessRevoked=true;failedSources=[]}
+    else {console.warn('Falha ao sincronizar a agenda:',error instanceof Error?error.message:'erro desconhecido');if(generation===syncGeneration)failedSources=[...new Set([...failedSources,...(retrySources??AGENDA_SOURCES)])]}
+  }
   finally {if(generation===syncGeneration){loadingAssignments=false;render()}}
 }
 
 function renderSyncNotice():void {
   const host=document.getElementById('individualRoot')
-  if(!host||!failedSources.length)return
+  if(!host)return
   host.querySelector('[data-sync-failure]')?.remove()
+  if(accessRevoked){
+    const notice=document.createElement('p');notice.className='notice warning';notice.dataset.syncFailure=''
+    notice.textContent='Esta agenda não recebe mais atualizações. Somente os dados já salvos neste aparelho continuam disponíveis.'
+    host.prepend(notice);return
+  }
+  if(!failedSources.length)return
   const notice=document.createElement('div');notice.className='notice warning';notice.dataset.syncFailure=''
   const labels:Record<string,string>={...sourceLabels,quadro:'Quadro e documentos'}
   const message=document.createElement('p');message.textContent='Agenda parcial. Não foi possível atualizar: '+failedSources.map(source=>labels[source]??source).join(', ')+'. Os últimos dados disponíveis foram preservados.'

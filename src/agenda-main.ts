@@ -7,13 +7,12 @@ import type { MasterPessoa, Usuario } from './types'
 import mountAgenda from './modules/individual'
 import { normalizeAgendaPeople, sanitizeAgendaPeople } from './modules/individual-domain'
 import { refreshServiceWorkerWeekly } from './pwa-sync'
-import { apiJson } from './secure-api.ts'
+import { apiJson, ApiError, clearAgendaDeviceToken, saveAgendaDeviceToken } from './secure-api.ts'
 
 const PERSON_KEY = 'noroeste_agenda_person'
 const PEOPLE_KEY = 'noroeste_agenda_people_v2'
 const PEOPLE_SYNC_KEY = 'noroeste_agenda_people_sync_v2'
 const INSTALLATION_KEY = 'noroeste_agenda_installation_v1'
-const DAILY_SYNC_MS = 24 * 60 * 60 * 1000
 const identity = document.getElementById('agendaIdentity')!
 const shell = document.getElementById('agendaShell')!
 const select = document.getElementById('agendaPerson') as HTMLSelectElement
@@ -82,11 +81,24 @@ function installationId(): string {
 }
 
 function clearIdentityCache(): void {
+  clearAgendaDeviceToken()
   for (let index = localStorage.length - 1; index >= 0; index -= 1) {
     const key = localStorage.key(index)
     const identityData = key?.startsWith('noroeste_agenda_offline_v3:') || (key?.startsWith('noroeste_agenda_ui_v1:') && key.endsWith(':standalone'))
     if (key && identityData) localStorage.removeItem(key)
   }
+}
+
+function showRevokedAgenda(): void {
+  let notice = document.getElementById('agendaRevoked')
+  if (!notice) {
+    notice = document.createElement('p')
+    notice.id = 'agendaRevoked'
+    notice.className = 'notice warning'
+    shell.insertBefore(notice, document.getElementById('appContent'))
+  }
+  notice.textContent = 'Esta agenda não recebe mais atualizações. Você pode consultar somente os dados já salvos neste aparelho.'
+  if (shell.classList.contains('hidden')) error.textContent = notice.textContent
 }
 
 function openAgenda(masterId: string): void {
@@ -114,19 +126,20 @@ async function init(): Promise<void> {
     renderPeople()
     if (saved && people[saved] && people[saved].active !== false && shell.classList.contains('hidden')) openAgenda(saved)
   }
-  const lastSync = Number(localStorage.getItem(PEOPLE_SYNC_KEY) ?? 0)
-  if (saved && Object.keys(people).length && Date.now() - lastSync < DAILY_SYNC_MS) return
   if (syncingPeople) return
   syncingPeople = true
   try {
-    const response = await apiJson<{ people: Record<string, Pick<MasterPessoa, 'name' | 'active'>>; masterId: string }>('agenda-device')
+    const response = await apiJson<{ people: Record<string, Pick<MasterPessoa, 'name' | 'active'>>; masterId: string; deviceToken?: string }>('agenda-device')
+    if (response.deviceToken) saveAgendaDeviceToken(response.deviceToken)
+    document.getElementById('agendaRevoked')?.remove()
     people = normalizeAgendaPeople(response.people)
     localStorage.setItem(PEOPLE_KEY, JSON.stringify(sanitizeAgendaPeople(people)))
     localStorage.setItem(PEOPLE_SYNC_KEY, String(Date.now()))
     renderPeople()
     const selected = saved && people[saved]?.active !== false ? saved : response.masterId
     if (selected && people[selected] && people[selected].active !== false && shell.classList.contains('hidden')) openAgenda(selected)
-  } catch {
+  } catch (reason) {
+    if (reason instanceof ApiError && reason.status === 410) { showRevokedAgenda(); return }
     if (!Object.keys(people).length) error.textContent = 'Nao foi possivel carregar as pessoas. Verifique a conexao.'
   } finally {
     syncingPeople = false
@@ -167,7 +180,8 @@ async function saveSelectedPerson(): Promise<void> {
   continueButton.textContent = 'Abrindo...'
   error.textContent = ''
   try {
-    await apiJson<{masterId:string}>('agenda-device', { method:'POST', body:JSON.stringify({ masterId, installationId:installationId() }) })
+    const paired=await apiJson<{masterId:string;deviceToken?:string}>('agenda-device', { method:'POST', body:JSON.stringify({ masterId, installationId:installationId() }) })
+    if(paired.deviceToken)saveAgendaDeviceToken(paired.deviceToken)
     localStorage.setItem(PEOPLE_SYNC_KEY,String(Date.now()))
     openAgenda(masterId)
   } catch (reason) {

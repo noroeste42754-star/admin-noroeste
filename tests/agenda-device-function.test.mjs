@@ -34,6 +34,21 @@ test('repetir a mesma seleção preserva a sessão', async () => {
   const current=async()=>({token:'old',masterId:'m_1',installationId,expiresAt:Date.now()+1000})
   const response = await agendaDeviceResponse(request('m_1'), current, loadPeople)
   assert.equal(response.status,200)
-  assert.deepEqual(await response.json(),{masterId:'m_1'})
+  assert.deepEqual(await response.json(),{masterId:'m_1',deviceToken:'old'})
   assert.equal(response.headers.get('set-cookie'),null)
+})
+
+test('instalação revogada não recebe nomes nem pode escolher outra pessoa',async()=>{
+  const revoked=async()=>({token:'old',masterId:'m_1',installationId,revoked:true})
+  const noPeople=async()=>{throw new Error('não deve carregar pessoas')}
+  const get=await agendaDeviceResponse(new Request('https://app.test/.netlify/functions/agenda-device'),revoked,noPeople)
+  assert.equal(get.status,410)
+  const post=await agendaDeviceResponse(request('m_2'),revoked,noPeople)
+  assert.equal(post.status,410)
+})
+
+test('instalação ativa não troca de pessoa por chamada direta',async()=>{
+  const current=async()=>({token:'old',masterId:'m_1',installationId})
+  const response=await agendaDeviceResponse(request('m_2'),current,loadPeople)
+  assert.equal(response.status,403)
 })

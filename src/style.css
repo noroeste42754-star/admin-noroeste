@@ -1034,6 +1034,13 @@ textarea.form-input {
 #appContent .workspace-disclosure > .form-panel { border:0; }
 .service-manual { margin-bottom:20px; }
 #individualRoot .module-title { min-height:44px; margin-bottom:16px; }
+
+.module-install-offer { margin: 12px; padding: 10px 12px; border: 1px solid var(--border); border-radius: 8px; background: var(--surface); display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px; font-size: .83rem; }
+.module-install-offer details { width: 100%; }
+.module-install-offer summary { cursor: pointer; font-weight: 600; }
+.module-install-links { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+.module-install-offer .btn { text-decoration: none; }
+#startupSplash { min-height: 100dvh; display: grid; place-items: center; color: var(--ink-3); background: var(--surface-2); font-size: .9rem; }
 #individualRoot .module-title h2 { font-size:1.45rem; color:var(--ink) !important; }
 .workspace-tabs, .workspace-subtabs { display:flex; flex-wrap:wrap; gap:4px; border-bottom:1px solid var(--border); margin-bottom:20px; }
 .workspace-tabs button, .workspace-subtabs button { min-height:44px; border:0; border-bottom:3px solid transparent; background:transparent; padding:10px 14px; color:var(--ink-2); font:inherit; font-weight:600; cursor:pointer; }

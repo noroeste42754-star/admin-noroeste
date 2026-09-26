@@ -13,7 +13,7 @@ try {
   let ready=false
   for(let attempt=0;attempt<100;attempt++){try{ready=(await fetch(url)).ok}catch{}if(ready)break;if(server.exitCode!==null)throw Error(logs);await delay(200)}
   if(!ready)throw Error('Preview não iniciou: '+logs)
-  for(const script of (process.env.BROWSER_TESTS?.split(',')??['operations-browser.mjs','layout-mobile-browser.mjs','usability-browser.mjs','pending-guidance-browser.mjs','messages-browser.mjs','oradores-browser.mjs','integration-browser.mjs'])) {
+  for(const script of (process.env.BROWSER_TESTS?.split(',')??['module-install-browser.mjs','operations-browser.mjs','layout-mobile-browser.mjs','usability-browser.mjs','pending-guidance-browser.mjs','messages-browser.mjs','oradores-browser.mjs','integration-browser.mjs'])) {
     console.log('\nNavegador: '+script)
     const child=spawn(process.execPath,['tests/'+script],{windowsHide:true,stdio:'inherit',env:{...process.env,APP_TEST_URL:url}})
     const timer=setTimeout(()=>child.kill(),180000)
