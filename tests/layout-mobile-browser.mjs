@@ -35,6 +35,10 @@ try {
    await page.waitForFunction(()=>!document.querySelector('#appContent')?.textContent?.includes('Carregando'))
    if(module==='mestre'){
     await page.locator('#pFiltroNome').waitFor()
+    await page.locator('#pFiltroNome').pressSequentially('Ana')
+    assert.equal(await page.locator('#pFiltroNome').inputValue(),'Ana')
+    assert.equal(await page.locator('#pFiltroNome').evaluate(el=>document.activeElement===el),true)
+    await page.locator('#pFiltroNome').fill('')
     assert.equal(await page.locator('#pFiltroRole').isVisible(),false)
     await page.locator('#btnAddPessoa').click();await page.locator('[role="dialog"]').waitFor()
     assert.equal(await page.locator('#pNome').evaluate(el=>el.labels.length>0),true)
@@ -43,14 +47,14 @@ try {
    if(module==='tarefas'&&width<=560){
     const card=page.locator('.task-mobile-scale [data-task-meeting-id]').first();await card.waitFor()
     assert.equal(await card.getAttribute('open'),null)
-    await card.locator('summary').click();assert.equal(await card.locator('select').first().isVisible(),true)
+    await card.locator('summary').first().click();assert.equal(await card.locator('select').first().isVisible(),true)
    }
    if(module==='oradores'){
     await page.locator('[data-workspace-tab="programacao"]').click()
     await page.locator('#newSchedule').click()
     if(width<=560)assert.equal(await page.locator('#scheduleSearch').isVisible(),false)
     await page.locator('#cancelScheduleEdit').click()
-    assert.equal(await page.locator('#scheduleSearch').isVisible(),true)
+    assert.equal(await page.locator('#scheduleSearch').count(),0)
    }
    if(module==='limpeza'){
     await page.locator('[data-cleaning-tab="grupos"]').click()

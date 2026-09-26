@@ -554,15 +554,15 @@ function renderPdf(): void {
   const period = generatedPeriod()
   const fontSize = Number(localStorage.getItem('noroeste_limpeza_pdf_font') ?? 15)
   content.innerHTML = `
-    <div class="form-panel">
-      <label class="form-field"><span>Escala gerada</span><select id="pdfLimpezaPeriodo" class="form-select" ${Object.keys(periodos).length ? '' : 'disabled'}>${generatedPeriodOptions() || '<option>Nenhuma escala gerada</option>'}</select></label>
+    ${period ? `<div class="form-panel">
+      <label class="form-field"><span>Escala gerada</span><select id="pdfLimpezaPeriodo" class="form-select">${generatedPeriodOptions()}</select></label>
       <details><summary>Ajustar PDF</summary><label class="form-field"><span>Fonte base: <strong id="pdfLimpezaFonteValor">${fontSize} pt</strong></span><input id="pdfLimpezaFonte" type="range" min="8" max="22" value="${fontSize}"></label></details>
-      <span class="admin-badge">${period?.publicado ? 'Publicado' : 'Rascunho'}</span>
-      ${period?`<button id="btnGerarPdfLimpeza" class="btn btn-ghost btn-full" type="button">Baixar PDF</button>
-      <button id="btnPublicarPdfLimpeza" class="btn ${period.publicado ? 'btn-ghost' : 'btn-primary'} btn-full" style="margin-top:8px" type="button">${period.publicado ? 'Reabrir para edição' : 'Publicar no Quadro'}</button>`:'<p class="form-help">Gere uma escala para liberar o PDF e a publicação no Quadro.</p>'}
-    </div>`
+      <span class="admin-badge">${period.publicado ? 'Publicado' : 'Rascunho'}</span>
+      <button id="btnGerarPdfLimpeza" class="btn btn-ghost btn-full" type="button">Baixar PDF</button>
+      <button id="btnPublicarPdfLimpeza" class="btn ${period.publicado ? 'btn-ghost' : 'btn-primary'} btn-full" style="margin-top:8px" type="button">${period.publicado ? 'Reabrir para edição' : 'Publicar no Quadro'}</button>
+    </div>` : '<p class="empty-state">Nenhuma escala gerada. Escolha o período em “Gerar escala” para começar.</p>'}`
   const schedule = document.getElementById('cleaningSchedule')
-  if (schedule) schedule.innerHTML = period ? renderPeriodRows(period) : '<p class="empty-state">Nenhuma escala gerada.</p>'
+  if (schedule) schedule.innerHTML = period ? renderPeriodRows(period) : ''
   schedule?.querySelectorAll<HTMLButtonElement>('[data-cleaning-substitute]').forEach(button=>button.addEventListener('click',()=>{
     if(!period||period.publicado)return
     const index=Number(button.dataset.cleaningSubstitute),week=period.semanas[index]

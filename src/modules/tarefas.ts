@@ -783,11 +783,10 @@ function meetingCard(meeting: TarefasMeeting): string {
   const type = canonicalMeetingType(meeting.type) === 'midweek' ? 'Meio de semana' : 'Fim de semana'
   const ref = meetingRefFor(meeting)
   const locked = ref ? periods[ref.periodId]?.locked === true : false
-  const editors = ref
-    ? GENERATED_ROLES.filter(role => meetingAllowsRole(meeting, role))
-      .map(role => assignmentEditor(ref.periodId, ref.meetingId, meeting, role, locked))
-      .join('')
-    : ''
+  const roles = ref ? GENERATED_ROLES.filter(role => meetingAllowsRole(meeting, role)) : []
+  const assignedRoles = roles.filter(role => Boolean(assignmentForRole(meeting, role)))
+  const vacantRoles = roles.filter(role => !assignmentForRole(meeting, role))
+  const editors = ref ? `${assignedRoles.map(role => assignmentEditor(ref.periodId, ref.meetingId, meeting, role, locked)).join('')}${vacantRoles.length ? `<details class="task-vacant-roles" ${pendingTarget?.meetingId === ref.meetingId && pendingTarget.role && vacantRoles.includes(pendingTarget.role) ? 'open' : ''}><summary>${vacantRoles.length} ${vacantRoles.length === 1 ? 'função' : 'funções'} sem pessoa</summary>${vacantRoles.map(role => assignmentEditor(ref.periodId, ref.meetingId, meeting, role, locked)).join('')}</details>` : ''}` : ''
 
   return `
     <details data-meeting-key="${escapeHtml(ref?.periodId+'/'+ref?.meetingId)}" ${pendingTarget?.meetingId === ref?.meetingId || expandedTaskMeetings.has(ref?.periodId+'/'+ref?.meetingId) ? 'open' : ''} data-task-meeting-id="${escapeHtml(ref?.meetingId)}" style="background:var(--surface);border:1px solid ${pendingTarget?.meetingId === ref?.meetingId ? '#7E3AF2' : 'var(--border)'};box-shadow:${pendingTarget?.meetingId === ref?.meetingId ? '0 0 0 3px #EAE1FA' : 'none'};border-radius:8px;padding:10px 12px">

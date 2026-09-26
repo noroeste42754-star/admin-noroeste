@@ -102,6 +102,7 @@ function recordAgendaHistory(masterId:string, events:AgendaEvent[]):void {
 }
 function historyPanel():string {
   const changes = readAgendaHistory(selectedMasterId())?.changes ?? []
+  if (!changes.length) return ''
   return `<details class="form-panel"><summary>Alterações e retiradas (${changes.length})</summary><p class="notice">Histórico deste aparelho, desde a primeira sincronização. Retirado significa que o compromisso deixou de constar na sua agenda; pode ter sido cancelado ou reatribuído. O ICS já importado não é atualizado automaticamente.</p>${changes.map(change => {
     const event = change.after ?? change.before
     if (!event) return ''
@@ -243,12 +244,10 @@ function ensureSelectedPerson(): void {
 function adminPersonPicker(): string {
   if (!isAdmin()) return ''
   const options = Object.entries(people()).filter(([, person]) => person.active !== false).sort(([, a], [, b]) => a.name.localeCompare(b.name, 'pt-BR')).map(([id, person]) => `<option value="${esc(id)}" ${selectedPersonId === id ? 'selected' : ''}>${esc(person.name)}</option>`).join('')
-  return `<div class="form-panel agenda-admin-person"><label class="form-field"><span>Buscar pessoa</span><input id="adminAgendaPersonSearch" class="form-input" type="search" placeholder="Digite parte do nome"></label><label class="form-field"><span>Visualizar pessoa</span><select id="adminAgendaPerson">${options}</select></label><p class="form-help">O Admin consulta a agenda pelo vínculo permanente.</p></div>`
+  return `<div class="form-panel agenda-admin-person"><label class="form-field"><span>Agenda de</span><select id="adminAgendaPerson">${options}</select></label></div>`
 }
 function bindAdminPersonPicker(): void {
   const select=document.getElementById('adminAgendaPerson') as HTMLSelectElement|null
-  const search=document.getElementById('adminAgendaPersonSearch') as HTMLInputElement|null
-  search?.addEventListener('input',()=>{const query=search.value.trim().toLocaleLowerCase('pt-BR');[...select?.options??[]].forEach(option=>{option.hidden=Boolean(query&&!option.text.toLocaleLowerCase('pt-BR').includes(query))})})
   select?.addEventListener('change', event => { persistUiPreferences(); selectedPersonId = (event.target as HTMLSelectElement).value; localStorage.setItem(ADMIN_PERSON_KEY, selectedPersonId); uiPreferencesKey = ''; offlinePersonalEvents=null; offlineAnnouncementEvents=null; failedSources=[]; void load(); render() })
 }
 function screenTabs(): string {
@@ -308,7 +307,7 @@ function render(): void {
     <div class="agenda-list">${eventRows(future.slice(0, 5)) || '<p class="empty-state">Você não tem designações futuras no momento.</p>'}</div>
     ${future.length > 5 ? `<details class="agenda-more-events"><summary>Ver mais ${future.length - 5} designação(ões)</summary><div class="agenda-list">${eventRows(future.slice(5))}</div></details>` : ''}
     ${screenTabs()}
-    <details id="agendaOtherDates" class="form-panel agenda-personal-panel" ${personalDatesOpen ? 'open' : ''}><summary><strong>Ver outras datas</strong></summary>
+    <details id="agendaOtherDates" class="form-panel agenda-personal-panel" ${personalDatesOpen ? 'open' : ''}><summary><strong>${personalDatesOpen ? 'Voltar às próximas designações' : 'Ver outras datas'}</strong></summary>
     <div class="program-period-modes agenda-view-modes" role="tablist" aria-label="Visualização dos compromissos"><button class="program-period-mode" role="tab" type="button" data-personal-view="week" aria-selected="${uiPreferences.personal.view === 'week'}">Semana</button><button class="program-period-mode" role="tab" type="button" data-personal-view="month" aria-selected="${uiPreferences.personal.view === 'month'}">Mês</button></div>
     ${uiPreferences.personal.view === 'week' ? weekNavigation(personalWeekDate, 'personal') : ''}
     ${uiPreferences.personal.view === 'month' ? `<div class="agenda-toolbar"><button class="btn btn-ghost" id="agendaPrev" type="button" aria-label="Mês anterior">‹</button><label class="sr-only" for="agendaMonth">Mês do calendário pessoal</label><input class="form-input" id="agendaMonth" type="month" value="${month}"><button class="btn btn-ghost" id="agendaNext" type="button" aria-label="Próximo mês">›</button></div><div class="agenda-actions"><button class="btn btn-ghost" id="agendaToday" type="button">Hoje</button></div><div class="agenda-calendar"><div class="agenda-weekdays">${['Dom','Seg','Ter','Qua','Qui','Sex','Sáb'].map(day => `<strong>${day}</strong>`).join('')}</div><div class="agenda-days">${calendar.map(day => {if(!day)return '<div class="agenda-day empty"></div>';const date=`${month}-${day.padStart(2,'0')}`,dayEvents=byDay.get(Number(day))??[];return `<button class="agenda-day agenda-day-button ${dayEvents.length?'has-events':''} ${personalSelectedDate===date?'selected':''}" type="button" data-personal-date="${date}" aria-pressed="${personalSelectedDate===date}" aria-label="${esc(`${friendlyDate(date)}: ${dayEvents.length} compromisso(s)`)}"><span>${day}</span><span class="agenda-day-markers" aria-hidden="true">${dayEvents.slice(0,3).map(event=>`<i class="${event.source}"></i>`).join('')}</span></button>`}).join('')}</div></div>` : ''}
@@ -316,6 +315,7 @@ function render(): void {
     <div class="agenda-list">${eventRows(listEvents) || `<p class="empty-state">${uiPreferences.personal.view === 'week' ? 'Nenhuma designação nesta semana.' : 'Nenhuma designação nesta data.'}</p>`}</div></details>
     <p class="agenda-sync-meta">${loadingAssignments ? 'Sincronizando…' : lastSync ? `Atualizada em ${esc(lastSync)}` : 'Ainda não sincronizada'}</p>
     ${calendarExportPanel()}${historyPanel()}`
+  root.classList.toggle('agenda-browsing-dates', personalDatesOpen)
   bind()
 }
 
@@ -336,7 +336,12 @@ function bindWeekNavigation(scope: 'personal' | 'general'): void {
 function bind(): void {
   bindScreenTabs()
   bindAdminPersonPicker()
-  document.getElementById('agendaOtherDates')?.addEventListener('toggle', event => { personalDatesOpen = (event.currentTarget as HTMLDetailsElement).open })
+  document.getElementById('agendaOtherDates')?.addEventListener('toggle', event => {
+    personalDatesOpen = (event.currentTarget as HTMLDetailsElement).open
+    document.getElementById('individualRoot')?.classList.toggle('agenda-browsing-dates', personalDatesOpen)
+    const label = (event.currentTarget as HTMLDetailsElement).querySelector('summary strong')
+    if (label) label.textContent = personalDatesOpen ? 'Voltar às próximas designações' : 'Ver outras datas'
+  })
   document.getElementById('agendaPrev')?.addEventListener('click', () => moveMonth(-1))
   document.getElementById('agendaNext')?.addEventListener('click', () => moveMonth(1))
   document.getElementById('agendaToday')?.addEventListener('click',()=>{month=fortalezaDate().slice(0,7);personalSelectedDate=fortalezaDate();persistUiPreferences();render()})
@@ -385,7 +390,7 @@ function renderGeneralAgenda(root: HTMLElement): void {
 }
 
 function calendarExportPanel(): string {
-  return `<details class="form-panel agenda-board-card agenda-personal-panel" data-agenda-panel="sharing" ${uiPreferences.personal.openPanels.includes('sharing') ? 'open' : ''}><summary><strong>Calendário e compartilhamento</strong><span>ICS</span></summary><div class="agenda-board-body"><div class="agenda-actions agenda-sharing-actions"><button class="btn btn-primary" id="agendaIcsMonth" type="button">Baixar mês</button><button class="btn btn-ghost" id="agendaIcsUpcoming" type="button">Baixar próximos</button><button class="btn btn-ghost" id="agendaShare" type="button">Compartilhar</button></div></div></details>`
+  return `<details class="form-panel agenda-board-card agenda-personal-panel" data-agenda-panel="sharing" ${uiPreferences.personal.openPanels.includes('sharing') ? 'open' : ''}><summary><strong>Exportar ou compartilhar</strong></summary><div class="agenda-board-body"><div class="agenda-actions agenda-sharing-actions"><button class="btn btn-primary" id="agendaIcsMonth" type="button">Baixar mês</button><button class="btn btn-ghost" id="agendaIcsUpcoming" type="button">Baixar próximos</button><button class="btn btn-ghost" id="agendaShare" type="button">Compartilhar</button></div></div></details>`
 }
 
 function renderBoard(root: HTMLElement): void {

@@ -58,9 +58,16 @@ try {
     await page.locator('[data-menu-card="individual"]').click()
     await page.getByRole('heading', { name:'Próximas designações' }).waitFor()
     assert.equal(await page.locator('.agenda-personal-event .agenda-status.futuro').count(), 0)
+    assert.equal(await page.locator('#adminAgendaPersonSearch').count(), 0)
+    await page.locator('#agendaOtherDates summary').click()
+    await page.locator('#individualRoot.agenda-browsing-dates').waitFor()
+    assert.equal(await page.locator('#individualRoot > .agenda-list').isVisible(), false)
+    await page.locator('#agendaOtherDates summary').click()
+    await page.locator('#individualRoot.agenda-browsing-dates').waitFor({ state:'detached' })
+    assert.equal(await page.locator('#individualRoot > .agenda-list').isVisible(), true)
     if (await page.locator('[data-sync-failure]').count()) { await page.locator('[data-sync-failure] button').click(); await page.locator('[data-sync-failure]').waitFor({ state:'detached' }) }
     assert.equal(await page.getByRole('tab', { name:'Relatório', exact:true }).count(), 0)
-    await page.getByText('Calendário e compartilhamento', { exact:true }).click()
+    await page.getByText('Exportar ou compartilhar', { exact:true }).click()
     for (const selector of ['#agendaIcsMonth', '#agendaIcsUpcoming']) assert.equal(await page.locator(selector).isEnabled(), true)
     for (const screen of ['Programação geral', 'Anúncios e PDFs']) {
       await page.getByRole('button', { name:screen, exact:true }).click()

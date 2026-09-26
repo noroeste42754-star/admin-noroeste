@@ -734,8 +734,13 @@ function renderPessoas(): void {
   ;(document.getElementById('pFiltroAtivo') as HTMLSelectElement).value = pessoaFilter.ativo
 
   document.getElementById('pFiltroNome')!.addEventListener('input', e => {
-    pessoaFilter.nome = (e.target as HTMLInputElement).value
+    const input = e.target as HTMLInputElement
+    pessoaFilter.nome = input.value
+    const selection = input.selectionStart
     renderPessoas()
+    const restored = document.getElementById('pFiltroNome') as HTMLInputElement | null
+    restored?.focus()
+    if (selection !== null) restored?.setSelectionRange(selection, selection)
   })
   document.getElementById('pFiltroRole')!.addEventListener('change', e => {
     pessoaFilter.role = (e.target as HTMLSelectElement).value
