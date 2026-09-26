@@ -12,7 +12,7 @@
     "test:limpeza": "node --test tests/limpeza-domain.test.mjs tests/limpeza-documents.test.mjs",
     "test:individual": "node --test tests/agenda-changes.test.mjs tests/individual-domain.test.mjs tests/individual-preferences.test.mjs tests/agenda-documents-domain.test.mjs tests/agenda-device-function.test.mjs tests/agenda-worker.test.mjs tests/pwa-sync.test.mjs tests/calendar-function.test.mjs tests/calendar-subscriptions-function.test.mjs",
     "test:servico-campo": "node --test tests/servico-campo-domain.test.mjs tests/servico-campo-documents.test.mjs",
-    "test:oradores": "node --test tests/messages.test.mjs tests/oradores-domain.test.mjs tests/oradores-documents.test.mjs",
+    "test:oradores": "node --test tests/messages.test.mjs tests/oradores-domain.test.mjs tests/oradores-documents.test.mjs tests/congregation-geocode.test.mjs",
     "test:all": "npm run test:mestre && npm run test:tarefas && npm run test:oradores && npm run test:limpeza && npm run test:escala && npm run test:servico-campo && npm run test:individual && npm run test:integrations",
     "test:mestre": "node --test tests/master-person-delete.test.mjs tests/secure-api.test.mjs tests/database-batch.test.mjs tests/auth-domain.test.mjs tests/mestre-backup-domain.test.mjs tests/mestre-domain.test.mjs tests/master-quality.test.mjs tests/pdf-maintenance.test.mjs tests/pdf-expiry.test.mjs tests/firebase-rules.test.mjs tests/data-authorization.test.mjs tests/storage-authorization.test.mjs tests/agenda-public-security.test.mjs tests/service-worker-security.test.mjs tests/conditional-write.test.mjs tests/workflow-transitions.test.mjs tests/retired-modules.test.mjs",
     "test:integrations": "node --test tests/integration-contracts.test.mjs tests/operations.test.mjs",
@@ -23,6 +23,7 @@
   "dependencies": {
     "@netlify/blobs": "^11.0.3",
     "firebase-admin": "^14.4.0",
+    "open-location-code": "^1.0.3",
     "pdf-lib": "^1.17.1"
   },
   "devDependencies": {

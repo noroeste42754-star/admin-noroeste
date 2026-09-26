@@ -5,6 +5,7 @@ import { whatsappPhone } from './message-domain'
 import { availableDates } from './oradores-available'
 import { assignmentEntries, assignmentsMessage, confirmationMessage, exchangesMessage, availableMessage } from './oradores-messages'
 import { cleanAddress } from './agenda-location'
+import { apiJson, ApiError } from '../secure-api'
 import { publishModulePeriod, renderPublicationStatus } from './module-publication'
 import type { AppContext } from '../types'
 import { agendaConfigRef, child, compareAndSet, get, oradoresCadastroRef, oradoresCongregacoesRef, oradoresEventosRef, oradoresProgramacaoRef, oradoresRef, oradoresTemasRef, set, pessoasRef, tarefasScaleRef, tarefasPeopleRef, tarefasPlanejamentoRef, update } from '../firebase'
@@ -495,7 +496,7 @@ function renderThemes():void {
 async function saveTheme(form:HTMLFormElement):Promise<void>{const values=new FormData(form),number=Number(values.get('numero')),title=String(values.get('titulo')).trim();if(!Number.isInteger(number)||number<1||number>999||!title){toast('Informe número e título válidos');return}if(Object.entries(themes()).some(([id,item])=>id!==editingId&&item.numero===number)){toast('Já existe um tema com este número');return}if(editingId!=='new'&&themeUse(editingId).past&&(themes()[editingId]?.numero!==number||themes()[editingId]?.titulo!==title)){formError(form,'Número e título de um tema já usado devem ser preservados.');return}const id=editingId==='new'?`tema_${String(number).padStart(3,'0')}`:editingId,item={numero:number,titulo:title,ativo:values.get('ativo')==='on'};try{await set(child(oradoresTemasRef,id),item);themes()[id]=item;dirty=false;editingId='';renderThemes()}catch{toast('Não foi possível salvar')}}
 async function deleteTheme():Promise<void>{const id=editingId,item=themes()[id];if(!item||Object.values(schedule()).some(row=>row.temaId===id)||Object.values(data.historicoTemas??{}).some(row=>row.temaId===id)||Object.values(speakers()).some(row=>row.temaIds.includes(id))){toast('Tema com histórico deve ser inativado, não excluído');return}if(!confirm(`Excluir o tema ${item.numero}?`))return;try{await set(child(oradoresTemasRef,id),null);delete themes()[id];dirty=false;editingId='';renderThemes()}catch{toast('Não foi possível excluir')}}
 
-function congregationEditor():string{if(!editingId)return'';const item=editingId==='new'?undefined:congregations()[editingId];return`<form id="congregationForm" class="form-panel"><h3>${item?'Editar congregação':'Nova congregação'}</h3><div class="module-form-grid">${field('Nome',`<input name="nome" value="${esc(item?.nome)}" required>`)}${field('Cidade',`<input name="cidade" value="${esc(item?.cidade)}">`)}${field('Tipo',`<select name="tipo">${option('visitante','Visitante',item?.tipo??'visitante')}${option('local','Local',item?.tipo??'visitante')}</select>`)}${field('Contato',`<input name="contato" value="${esc(item?.contato)}">`)}${field('Telefone',`<input name="telefone" inputmode="tel" value="${esc(item?.telefone)}">`)}${field('Dia da reunião',`<input name="diaReuniao" placeholder="Sábado" value="${esc(item?.diaReuniao)}">`)}${field('Horário',`<input name="horario" type="time" value="${esc(item?.horario)}">`)}${field('Prazo padrão para oferecer datas',`<select name="horizonteDatas">${option('90','90 dias',String(item?.horizonteDatas??90))}${option('180','180 dias (aprox. 6 meses)',String(item?.horizonteDatas??90))}${option('365','365 dias (aprox. 1 ano)',String(item?.horizonteDatas??90))}</select>`)}${field('Endereço para impressão',`<input name="localizacao" value="${esc(item?.localizacao)}">`)}${field('Mapa (link HTTPS ou coordenadas)',`<input name="mapa" value="${esc(item?.mapa)}">`)}${field('Observações',`<textarea name="observacoes">${esc(item?.observacoes)}</textarea>`)}</div><label class="oradores-check"><input name="ativa" type="checkbox" ${item?.ativa!==false?'checked':''}> Congregação ativa</label><div class="service-actions"><button class="btn btn-primary">Salvar</button><button id="cancelCongregationEdit" class="btn btn-ghost" type="button">Cancelar</button>${item?'<button id="deleteCongregation" class="btn btn-danger" type="button">Excluir</button>':''}</div></form>`}
+function congregationEditor():string{if(!editingId)return'';const item=editingId==='new'?undefined:congregations()[editingId];return`<form id="congregationForm" class="form-panel"><h3>${item?'Editar congregação':'Nova congregação'}</h3><div class="module-form-grid">${field('Nome',`<input name="nome" value="${esc(item?.nome)}" required>`)}${field('Cidade',`<input name="cidade" value="${esc(item?.cidade)}">`)}${field('Tipo',`<select name="tipo">${option('visitante','Visitante',item?.tipo??'visitante')}${option('local','Local',item?.tipo??'visitante')}</select>`)}${field('Contato',`<input name="contato" value="${esc(item?.contato)}">`)}${field('Telefone',`<input name="telefone" inputmode="tel" value="${esc(item?.telefone)}">`)}${field('Dia da reunião',`<input name="diaReuniao" placeholder="Sábado" value="${esc(item?.diaReuniao)}">`)}${field('Horário',`<input name="horario" type="time" value="${esc(item?.horario)}">`)}${field('Prazo padrão para oferecer datas',`<select name="horizonteDatas">${option('90','90 dias',String(item?.horizonteDatas??90))}${option('180','180 dias (aprox. 6 meses)',String(item?.horizonteDatas??90))}${option('365','365 dias (aprox. 1 ano)',String(item?.horizonteDatas??90))}</select>`)}${field('Endereço para impressão',`<input name="localizacao" value="${esc(item?.localizacao)}">`)}${field('Mapa (link HTTPS, Plus Code ou coordenadas)',`<input name="mapa" value="${esc(item?.mapa)}">`)}${field('Observações',`<textarea name="observacoes">${esc(item?.observacoes)}</textarea>`)}</div><p id="congregationGeocodeStatus" class="form-help" aria-live="polite">${item?'':'Ao salvar, o app buscará o Plus Code do endereço. Confira o ponto antes de confirmar.'}</p><label class="oradores-check"><input name="ativa" type="checkbox" ${item?.ativa!==false?'checked':''}> Congregação ativa</label><div class="service-actions"><button class="btn btn-primary">Salvar</button><button id="cancelCongregationEdit" class="btn btn-ghost" type="button">Cancelar</button>${item?'<button id="deleteCongregation" class="btn btn-danger" type="button">Excluir</button>':''}</div></form>`}
 function renderCongregations():void {
   const rows=Object.entries(congregations()).sort((a,b)=>a[1].nome.localeCompare(b[1].nome,'pt-BR'))
   if(!rows.some(([id])=>id===selectedCongregationId))selectedCongregationId=rows.find(([,item])=>item.tipo==='visitante')?.[0]??rows[0]?.[0]??''
@@ -517,11 +518,55 @@ function renderCongregations():void {
   document.getElementById('newCongregation')?.addEventListener('click',()=>{editingId='new';renderCongregations()})
   document.getElementById('cancelCongregationEdit')?.addEventListener('click',()=>{editingId='';renderCongregations()})
   document.getElementById('congregationForm')?.addEventListener('submit',event=>{event.preventDefault();void saveCongregation(event.currentTarget as HTMLFormElement)})
+  const congregationForm=document.getElementById('congregationForm') as HTMLFormElement|null
+  for(const name of ['localizacao','cidade'])congregationForm?.querySelector<HTMLInputElement>(`[name="${name}"]`)?.addEventListener('input',()=>{
+    const map=congregationForm.querySelector<HTMLInputElement>('[name="mapa"]')
+    if(map&&congregationForm.dataset.generatedCode===map.value){map.value='';delete congregationForm.dataset.generatedCode}
+    const status=congregationForm.querySelector<HTMLElement>('#congregationGeocodeStatus')
+    if(status)status.textContent='O endereço mudou. Ao salvar, o app buscará o novo ponto.'
+    delete congregationForm.dataset.skipGeocode
+  })
   document.getElementById('deleteCongregation')?.addEventListener('click',()=>void deleteCongregation())
   document.querySelector<HTMLButtonElement>('[data-edit-congregation]')?.addEventListener('click',()=>{editingId=selectedCongregationId;renderCongregations()})
   document.getElementById('notifyCongregationExchanges')?.addEventListener('click',()=>{if(selected&&confirmed.length)showMessagePreview({id:'oradoresMessagePreview',title:`Arranjo com ${selected.nome}`,message:exchangesMessage(data,selectedCongregationId,today(),messageSettings.meetingText,planning.s2Time,true),phone:selected.telefone,toast})})
 }
-async function saveCongregation(form:HTMLFormElement):Promise<void>{const values=new FormData(form),name=String(values.get('nome')).trim();if(!name){toast('Informe o nome');return}const id=editingId==='new'?newSpeakerId('congregacao'):editingId,horizon=Number(values.get('horizonteDatas')),item:SpeakerCongregation={nome:name,cidade:String(values.get('cidade')).trim(),tipo:String(values.get('tipo')) as 'local'|'visitante',ativa:values.get('ativa')==='on',contato:String(values.get('contato')).trim(),telefone:phoneDigits(String(values.get('telefone'))),diaReuniao:String(values.get('diaReuniao')).trim(),horario:String(values.get('horario')),horizonteDatas:([90,180,365].includes(horizon)?horizon:90) as 90|180|365,localizacao:cleanAddress(String(values.get('localizacao'))),mapa:cleanAddress(String(values.get('mapa') ?? '')),observacoes:String(values.get('observacoes')).trim(),secao:'s2'};try{await set(child(oradoresCongregacoesRef,id),item);congregations()[id]=item;selectedCongregationId=id;dirty=false;editingId='';renderCongregations()}catch{toast('Não foi possível salvar')}}
+async function saveCongregation(form:HTMLFormElement):Promise<void>{
+  if(form.dataset.saving==='yes')return
+  const values=new FormData(form),name=String(values.get('nome')).trim()
+  if(!name){toast('Informe o nome');return}
+  const address=cleanAddress(String(values.get('localizacao')??'')),city=String(values.get('cidade')??'').trim()
+  const mapInput=form.querySelector<HTMLInputElement>('[name="mapa"]')
+  const status=form.querySelector<HTMLElement>('#congregationGeocodeStatus')
+  if(editingId==='new'&&address&&!mapInput?.value.trim()&&form.dataset.skipGeocode!=='yes'){
+    form.dataset.saving='yes'
+    if(status)status.textContent='Buscando o ponto do endereço…'
+    try{
+      const found=await apiJson<{plusCode:string;displayName:string;mapUrl:string;attribution:string}>('congregation-geocode',{method:'POST',body:JSON.stringify({address,city})})
+      if(!form.isConnected||editingId!=='new')return
+      if(mapInput)mapInput.value=found.plusCode
+      form.dataset.generatedCode=found.plusCode
+      if(status){
+        status.textContent=`Ponto sugerido: ${found.displayName}. ${found.attribution}. `
+        const link=document.createElement('a');link.href=found.mapUrl;link.target='_blank';link.rel='noopener noreferrer';link.textContent='Conferir no mapa'
+        status.append(link,document.createTextNode(' e clique em Salvar novamente. Se não for o local certo, corrija o campo Mapa.'))
+      }
+      return
+    }catch(error){
+      if(!form.isConnected)return
+      if(status){
+        status.textContent=error instanceof ApiError?error.message:'Não foi possível localizar o endereço. Confira-o ou informe o mapa manualmente.'
+        const skip=document.createElement('button');skip.type='button';skip.className='btn btn-ghost';skip.textContent='Salvar sem ponto'
+        skip.addEventListener('click',()=>{form.dataset.skipGeocode='yes';form.requestSubmit()})
+        status.append(' ',skip)
+      }
+      return
+    }finally{delete form.dataset.saving}
+  }
+  form.dataset.saving='yes'
+  const id=editingId==='new'?newSpeakerId('congregacao'):editingId,horizon=Number(values.get('horizonteDatas'))
+  const item:SpeakerCongregation={nome:name,cidade:city,tipo:String(values.get('tipo')) as 'local'|'visitante',ativa:values.get('ativa')==='on',contato:String(values.get('contato')).trim(),telefone:phoneDigits(String(values.get('telefone'))),diaReuniao:String(values.get('diaReuniao')).trim(),horario:String(values.get('horario')),horizonteDatas:([90,180,365].includes(horizon)?horizon:90) as 90|180|365,localizacao:address,mapa:cleanAddress(String(values.get('mapa') ?? '')),observacoes:String(values.get('observacoes')).trim(),secao:'s2'}
+  try{await set(child(oradoresCongregacoesRef,id),item);congregations()[id]=item;selectedCongregationId=id;dirty=false;editingId='';renderCongregations()}catch{toast('Não foi possível salvar')}finally{delete form.dataset.saving}
+}
 async function deleteCongregation():Promise<void>{const id=editingId,item=congregations()[id];if(!item||Object.values(schedule()).some(row=>scheduleCongregationId(row)===id)){toast('Congregação com histórico deve ser inativada, não excluída');return}if(!confirm(`Excluir ${item.nome}?`))return;try{await set(child(oradoresCongregacoesRef,id),null);delete congregations()[id];dirty=false;editingId='';renderCongregations()}catch{toast('Não foi possível excluir')}}
 
 function eventEditor():string{if(!editingId)return'';const item=editingId==='new'?undefined:events[editingId],types=item?.impactoTarefas?.tiposReuniao??[];return`<form id="speakerEventForm" class="form-panel"><h3>${item?'Editar evento':'Novo evento'}</h3><div class="module-form-grid">${field('Data',`<input name="data" type="date" value="${esc(item?.data??`${selectedMonth}-01`)}" required>`)}${field('Título',`<input name="titulo" value="${esc(item?.titulo)}" required>`)}${field('Tipo',`<select name="tipo">${Object.entries(EVENT_KIND_LABEL).map(([id,label])=>option(id,label,item?.tipo??'informativo')).join('')}</select>`)}${field('Descrição',`<textarea name="descricao">${esc(item?.descricao)}</textarea>`)}</div><label class="oradores-check"><input name="bloqueiaReuniao" type="checkbox" ${item?.impactoTarefas?.bloqueiaReuniao?'checked':''}> Bloqueia reunião no módulo Tarefas</label><div class="oradores-check-grid"><label class="oradores-check"><input name="tipoReuniao" type="checkbox" value="midweek" ${types.includes('midweek')?'checked':''}> Meio de semana</label><label class="oradores-check"><input name="tipoReuniao" type="checkbox" value="weekend" ${types.includes('weekend')?'checked':''}> Fim de semana</label></div><div class="service-actions"><button class="btn btn-primary">Salvar</button><button id="cancelEventEdit" class="btn btn-ghost" type="button">Cancelar</button>${item?'<button id="deleteEvent" class="btn btn-danger" type="button">Excluir</button>':''}</div></form>`}
