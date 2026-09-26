@@ -1,5 +1,6 @@
 import { renderPublicationStatus } from './module-publication'
 import { substitutionDialog } from '../ui/substitution-dialog'
+import { closeRecordEditor, mountRecordEditor } from '../ui/record-editor'
 import { focusCorrection, fieldHelp } from '../ui/field-guidance'
 import { fortalezaToday, isValidCivilDate, nextCivilMonth } from './civil-date'
 import { editorBusy, editorError, editorSaved } from '../ui/editor-feedback'
@@ -40,6 +41,7 @@ let changingPublication = false
 let downloadingPdf = false
 let configDirty = false
 let limpezaChanges = new Map<string, number | null>()
+let groupBulkEditing = false
 let periodos: Record<string, LimpezaPeriodoGerado> = {}
 let periodMode: CleaningPeriodMode = 'bimester'
 let periodAnchor = todayStr()
@@ -118,6 +120,7 @@ export default function mount(_ctx: AppContext): void {
   overviewMonth=_ctx.overview?.month??''
   if(overviewMonth)periodAnchor=overviewMonth+'-01'
   limpezaChanges = new Map()
+  groupBulkEditing = false
   configDirty = false
 
   const root = document.getElementById('appContent')
@@ -311,6 +314,7 @@ function renderGrupos(): void {
     <div style="font-size:.78rem;color:var(--ink-3);margin-bottom:8px">
       ${ativos.length} pessoa${ativos.length !== 1 ? 's' : ''} ativa${ativos.length !== 1 ? 's' : ''}
     </div>
+    <div class="service-actions">${groupBulkEditing ? '<button id="cancelCleaningBulk" class="btn btn-ghost" type="button">Cancelar organização</button>' : '<button id="startCleaningBulk" class="btn btn-ghost" type="button">Organizar vários grupos</button>'}</div>
     <div id="limpezaList">
       ${[...Array.from({ length: groupCount() }, (_, i) => i + 1), null].map(group => {
         const members = ativos.filter(([, person]) => (person.limpeza?.grupo ?? null) === group || (group === null && Number(person.limpeza?.grupo) > groupCount()))
@@ -320,22 +324,22 @@ function renderGrupos(): void {
           <span style="flex:1;font-size:.88rem;font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">
             ${escapeHtml(p.name)}
           </span>
-          <select class="form-select limpeza-sel" data-mid="${mid}"
+          ${groupBulkEditing ? `<select class="form-select limpeza-sel" data-mid="${escapeHtml(mid)}"
             style="width:126px;font-size:.82rem;padding:5px 8px">
             <option value="">Sem grupo</option>
             ${Array.from({ length: groupCount() }, (_, i) => i + 1).map(g => `
               <option value="${g}" ${(p.limpeza?.grupo ?? null) === g ? 'selected' : ''}>
                 Grupo ${g}
               </option>`).join('')}
-          </select>
+          </select>` : `<button class="btn btn-ghost" type="button" data-edit-cleaning-group="${escapeHtml(mid)}">Editar</button>`}
         </div>`).join('')}</details>`
       }).join('')}
     </div>
-    <div style="position:sticky;bottom:8px;margin-top:14px">
+    ${groupBulkEditing ? `<div style="position:sticky;bottom:8px;margin-top:14px">
       <button id="btnSalvarLimpezaGrupos" class="btn btn-primary btn-full" disabled>
         Salvar Grupos
       </button>
-    </div>`
+    </div>` : ''}`
 
   updateLimpezaCounters(ativos)
 
@@ -343,14 +347,39 @@ function renderGrupos(): void {
     sel.addEventListener('change', () => {
       const mid = sel.dataset['mid']!
       const val = sel.value ? parseInt(sel.value, 10) : null
-      limpezaChanges.set(mid, val)
+      if (val === (pessoas[mid]?.limpeza?.grupo ?? null)) limpezaChanges.delete(mid)
+      else limpezaChanges.set(mid, val)
       updateLimpezaCounters(ativos)
-      ;(document.getElementById('btnSalvarLimpezaGrupos') as HTMLButtonElement).disabled=limpezaChanges.size===0
+      const saveButton=document.getElementById('btnSalvarLimpezaGrupos') as HTMLButtonElement
+      saveButton.disabled=limpezaChanges.size===0
+      saveButton.textContent=limpezaChanges.size?`Salvar ${limpezaChanges.size} alteração(ões)`:'Salvar Grupos'
     })
   })
 
-  document.getElementById('btnSalvarLimpezaGrupos')!
-    .addEventListener('click', () => void saveGrupos())
+  document.getElementById('btnSalvarLimpezaGrupos')?.addEventListener('click', () => void saveGrupos())
+  document.getElementById('startCleaningBulk')?.addEventListener('click',()=>{groupBulkEditing=true;renderGrupos()})
+  document.getElementById('cancelCleaningBulk')?.addEventListener('click',()=>{groupBulkEditing=false;renderGrupos()})
+  content.querySelectorAll<HTMLButtonElement>('[data-edit-cleaning-group]').forEach(button=>button.addEventListener('click',()=>openCleaningGroupEditor(button.dataset.editCleaningGroup!)))
+}
+
+function openCleaningGroupEditor(mid:string):void {
+  const person=pessoas[mid],host=document.getElementById('cleaningGroups')
+  if(!person||!host)return
+  const form=document.createElement('form')
+  form.id='cleaningGroupForm';form.className='form-panel'
+  form.innerHTML=`<h3>Editar grupo</h3><p class="form-help">${escapeHtml(person.name)}</p><label class="form-field"><span>Grupo</span><select name="group" class="form-select"><option value="">Sem grupo</option>${Array.from({length:groupCount()},(_,i)=>i+1).map(group=>`<option value="${group}" ${person.limpeza?.grupo===group?'selected':''}>Grupo ${group}</option>`).join('')}</select></label><div class="service-actions"><button class="btn btn-primary" type="submit">Salvar</button><button id="cancelCleaningGroup" class="btn btn-ghost" type="button">Cancelar</button></div>`
+  host.append(form);mountRecordEditor(host,form.id)
+  form.querySelector('#cancelCleaningGroup')?.addEventListener('click',()=>closeRecordEditor(form))
+  form.addEventListener('submit',async event=>{
+    event.preventDefault()
+    const value=(form.elements.namedItem('group') as HTMLSelectElement).value
+    const group=value?Number(value):null
+    if((person.limpeza?.grupo??null)===group){closeRecordEditor(form);return}
+    const release=editorBusy(form)
+    try{await apiJson('cleaning-groups',{method:'PATCH',body:JSON.stringify({groups:{[mid]:group}})});person.limpeza={grupo:group};toast('Grupo atualizado');renderGrupos()}
+    catch{editorError(form,'Não foi possível salvar. Sua escolha foi mantida.')}
+    finally{release()}
+  })
 }
 
 function updateLimpezaCounters(ativos: [string, MasterPessoa][]): void {
@@ -397,6 +426,7 @@ async function saveGrupos(): Promise<void> {
     toast(`${n} alteraç${n === 1 ? 'ão salva' : 'ões salvas'} ✓`)
     editorSaved(scope)
     limpezaChanges.clear()
+    groupBulkEditing = false
     renderGrupos()
     if (!configDirty) renderConfig()
   } catch {

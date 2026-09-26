@@ -1,6 +1,6 @@
 /** Filters canonical-ID selects without creating people or accepting free-text IDs. */
 export function installPersonSearch(): void {
-  const selector = '#taskPersonMaster, #pmMaster, #speakerForm select[name="masterId"], #speakerScheduleForm select[name="oradorId"], #speakerScheduleForm select[name="oradorSecundarioId"]'
+  const selector = '#taskPersonMaster, #pmMaster, #speakerForm select[name="masterId"], #speakerScheduleForm select[name="oradorId"], #speakerScheduleForm select[name="oradorSecundarioId"], #speakerScheduleForm select[name="congregacaoId"], #taskMeetingForm select[data-meeting-role], #serviceLeaderForm select[name="leaderId"]'
   const enhance = (): void => {
     document.querySelectorAll<HTMLSelectElement>(selector).forEach(select => {
       if (select.disabled || select.dataset.searchReady) return

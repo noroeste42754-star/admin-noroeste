@@ -1,5 +1,6 @@
 import { focusCorrection, fieldHelp } from '../ui/field-guidance'
 import { substitutionDialog } from '../ui/substitution-dialog'
+import { closeRecordEditor, mountRecordEditor } from '../ui/record-editor'
 import { taskSubstitutes } from './substitution-domain'
 import { canonicalTaskPerson } from './central-person'
 import { fortalezaToday, fortalezaCurrentMonth, isValidCivilDate, nextCivilMonth } from './civil-date'
@@ -430,10 +431,21 @@ function renderEscala(): void {
   fieldHelp(content,'#tarefasPeriodMode','Mensal mostra um mês; bimestral reúne dois meses. A troca não apaga escalas.')
   content.querySelectorAll<HTMLDetailsElement>('[data-meeting-key]').forEach(card=>card.addEventListener('toggle',()=>{const key=card.dataset.meetingKey!;if(card.open)expandedTaskMeetings.add(key);else expandedTaskMeetings.delete(key)}))
   bindAssignmentEditors()
+  content.querySelectorAll<HTMLButtonElement>('[data-edit-meeting]').forEach(button=>button.addEventListener('click',()=>{
+    const periodId=button.dataset.period!, meetingId=button.dataset.editMeeting!
+    const meeting=periods[periodId]?.meetings?.[meetingId]
+    if(meeting)openMeetingEditor(periodId,meetingId,meeting)
+  }))
   if (pendingTarget?.meetingId) {
-    const target=pendingTarget
-    const controls=[...content.querySelectorAll<HTMLSelectElement>('.tarefas-assignment-select')].filter(control=>control.dataset.meeting===target.meetingId&&(!target.role||control.dataset.role===target.role))
-    focusCorrection(periods[target.periodId??'']?.locked?document.getElementById('btnToggleTaskLock'):controls.find(control=>control.getClientRects().length>0)??null)
+    const target=pendingTarget, meetingId=target.meetingId!
+    const controls=[...content.querySelectorAll<HTMLButtonElement>('[data-edit-meeting]')].filter(control=>control.dataset.editMeeting===target.meetingId)
+    if(periods[target.periodId??'']?.locked)focusCorrection(document.getElementById('btnToggleTaskLock'))
+    else{
+      const periodId=target.periodId??selectedPeriodId
+      const meeting=periods[periodId]?.meetings?.[meetingId]
+      if(meeting){openMeetingEditor(periodId,meetingId,meeting);focusCorrection(target.role?content.querySelector<HTMLElement>(`#taskMeetingForm [data-meeting-role="${target.role}"]`):content.querySelector<HTMLElement>('#taskMeetingForm'))}
+      else focusCorrection(controls.find(control=>control.getClientRects().length>0)??null)
+    }
     pendingTarget=null
   }
 
@@ -774,7 +786,7 @@ function sectionTitle(title: string, desc: string): string {
 
 function taskDesktopTable(meetings: TarefasMeeting[]): string {
   if (!meetings.length) return emptyState('Nenhuma reunião cadastrada neste período.')
-  return `<div class="task-scale-table-wrap"><table class="task-scale-table"><thead><tr><th>Reunião</th>${TASK_ROLES.map(role => `<th>${escapeHtml(TASK_ROLE_LABELS[role])}</th>`).join('')}</tr></thead><tbody>${meetings.map(meeting => { const ref = meetingRefFor(meeting), locked = ref ? periods[ref.periodId]?.locked === true : false; return `<tr data-task-meeting-id="${escapeHtml(ref?.meetingId)}"><th><strong>${escapeHtml(formatDate(meeting.date))}</strong><small>${canonicalMeetingType(meeting.type) === 'midweek' ? 'Meio' : 'Fim'}</small></th>${TASK_ROLES.map(role => `<td>${meetingAllowsRole(meeting, role) && ref ? assignmentEditor(ref.periodId, ref.meetingId, meeting, role, locked) : '<span class="task-not-applicable">—</span>'}</td>`).join('')}</tr>` }).join('')}</tbody></table></div>`
+  return `<div class="task-scale-table-wrap"><table class="task-scale-table"><thead><tr><th>Reunião</th>${TASK_ROLES.map(role => `<th>${escapeHtml(TASK_ROLE_LABELS[role])}</th>`).join('')}</tr></thead><tbody>${meetings.map(meeting => { const ref = meetingRefFor(meeting), locked = ref ? periods[ref.periodId]?.locked === true : false; return `<tr data-task-meeting-id="${escapeHtml(ref?.meetingId)}"><th><strong>${escapeHtml(formatDate(meeting.date))}</strong><small>${canonicalMeetingType(meeting.type) === 'midweek' ? 'Meio' : 'Fim'}</small>${ref&&!locked?`<button class="btn btn-ghost" type="button" data-edit-meeting="${escapeHtml(ref.meetingId)}" data-period="${escapeHtml(ref.periodId)}">Editar</button>`:''}</th>${TASK_ROLES.map(role => `<td>${meetingAllowsRole(meeting, role) && ref ? assignmentEditor(ref.periodId, ref.meetingId, meeting, role, locked) : '<span class="task-not-applicable">—</span>'}</td>`).join('')}</tr>` }).join('')}</tbody></table></div>`
 }
 
 const expandedTaskMeetings=new Set<string>()
@@ -801,22 +813,14 @@ function meetingCard(meeting: TarefasMeeting): string {
       </summary>
       <div style="display:flex;flex-direction:column;gap:6px;margin-top:10px">
         ${editors}
+        ${ref&&!locked?`<button class="btn btn-ghost" type="button" data-edit-meeting="${escapeHtml(ref.meetingId)}" data-period="${escapeHtml(ref.periodId)}">Editar reunião</button>`:''}
       </div>
     </details>`
 }
 
 function assignmentEditor(periodId: string, meetingId: string, meeting: TarefasMeeting, role: TaskRole, locked: boolean): string {
   const selected = assignmentForRole(meeting, role) ?? ''
-  const entry = { periodId, meetingId, meeting }
-  const options = Object.entries(pessoas)
-    .sort(([, a], [, b]) => pessoaNome(a, '').localeCompare(pessoaNome(b, ''), 'pt-BR'))
-    .map(([id, person]) => {
-      const reason = manualConflictReason(domainContext(), entry, role, id)
-      const suffix = reason ? ` [Conflito: ${reason}]` : ''
-      return `<option value="${escapeHtml(id)}" ${id === selected ? 'selected' : ''}>${escapeHtml(pessoaNome(person, id) + suffix)}</option>`
-    })
-    .join('')
-  return `<div><label style="display:flex;align-items:center;gap:8px;font-size:.76rem;color:var(--ink-2)"><span style="min-width:86px;font-weight:700">${escapeHtml(roleLabel(role))}</span><select class="form-select tarefas-assignment-select" data-period="${escapeHtml(periodId)}" data-meeting="${escapeHtml(meetingId)}" data-role="${escapeHtml(role)}" data-original="${escapeHtml(selected)}" style="padding:6px 28px 6px 8px;font-size:.78rem" ${locked ? 'disabled' : ''}><option value="">Deixar vazio</option>${options}</select></label>${locked?'':`<button type="button" class="btn btn-ghost" data-task-substitute data-period="${escapeHtml(periodId)}" data-meeting="${escapeHtml(meetingId)}" data-role="${role}">${selected?'Buscar substituto':'Sugerir candidato'}</button>`}</div>`
+  return `<div class="task-assignment-row"><span>${escapeHtml(roleLabel(role))}</span><strong>${escapeHtml(selected?pessoaNome(pessoas[selected]??{},selected):'Vago')}</strong>${locked?'':`<button type="button" class="btn btn-ghost" data-task-substitute data-period="${escapeHtml(periodId)}" data-meeting="${escapeHtml(meetingId)}" data-role="${role}">${selected?'Buscar substituto':'Sugerir candidato'}</button>`}</div>`
 }
 
 function bindAssignmentEditors(): void {
@@ -837,34 +841,53 @@ function bindAssignmentEditors(): void {
     }catch{toast('Não foi possível consultar candidatos. Tente novamente.')}
     finally{button.disabled=false}
   }))
-  document.querySelectorAll<HTMLSelectElement>('.tarefas-assignment-select').forEach(select => {
-    select.addEventListener('change', async () => {
-      select.disabled = true
-      try {
-      if (normalizeTaskGenerationRules(planning.engineRules).evitarConflitosOradores) {
-        const snapshot = await get(tarefasDiscursosRef)
-        discursos = snapshot.exists() ? snapshot.val() as TaskDomainContext['discursos'] : {}
-      }
-      const periodId = select.dataset['period'] ?? ''
-      const meetingId = select.dataset['meeting'] ?? ''
-      const role = select.dataset['role'] as TaskRole
-      const entry = meetingEntries(periods).find(item => item.periodId === periodId && item.meetingId === meetingId)
-      const reason = entry && select.value ? manualConflictReason(domainContext(), entry, role, select.value) : null
-      if (reason && !confirm(`${pessoaNome(pessoas[select.value]!, select.value)} tem conflito: ${reason}. Manter esta escolha manual mesmo assim?`)) {
-        select.value = select.dataset['original'] ?? ''
-        return
-      }
-      await saveAssignment(
-        periodId,
-        meetingId,
-        role,
-        select.value,
-      )
-      } catch {
-        select.value = select.dataset['original'] ?? ''
-        toast('Não foi possível verificar conflitos com Oradores. Tente novamente.')
-      } finally { select.disabled = false }
-    })
+}
+
+function openMeetingEditor(periodId: string, meetingId: string, meeting: TarefasMeeting): void {
+  if (periods[periodId]?.locked) return
+  const host = document.getElementById('tarefasContent')
+  if (!host || host.querySelector('#taskMeetingForm')) return
+  const roles = GENERATED_ROLES.filter(role => meetingAllowsRole(meeting, role))
+  const options = (role: TaskRole): string => {
+    const selected = assignmentForRole(meeting, role) ?? ''
+    return `<option value="">Deixar vaga</option>${Object.entries(pessoas).sort((a,b)=>pessoaNome(a[1],a[0]).localeCompare(pessoaNome(b[1],b[0]),'pt-BR')).map(([id,person])=>{
+      const reason = manualConflictReason(domainContext(), { periodId,meetingId,meeting }, role, id)
+      return `<option value="${escapeHtml(id)}" ${id===selected?'selected':''}>${escapeHtml(pessoaNome(person,id))}${reason?` · ${escapeHtml(reason)}`:''}</option>`
+    }).join('')}`
+  }
+  const form = document.createElement('form')
+  form.id = 'taskMeetingForm'
+  form.className = 'form-panel'
+  form.innerHTML = `<h3>Editar reunião</h3><p class="form-help">${escapeHtml(formatDate(meeting.date))} · ${canonicalMeetingType(meeting.type)==='midweek'?'Meio de semana':'Fim de semana'}</p><div class="task-meeting-fields">${roles.map(role=>`<label class="form-field"><span>${escapeHtml(TASK_ROLE_LABELS[role])}</span><select class="form-select" data-meeting-role="${role}">${options(role)}</select></label>`).join('')}</div><div class="service-actions"><button class="btn btn-primary" type="submit">Salvar reunião</button><button id="cancelTaskMeeting" class="btn btn-ghost" type="button">Cancelar</button></div>`
+  host.append(form)
+  mountRecordEditor(host, form.id)
+  form.querySelector('#cancelTaskMeeting')?.addEventListener('click',()=>closeRecordEditor(form))
+  form.addEventListener('submit',async event=>{
+    event.preventDefault()
+    if(periods[periodId]?.locked){editorError(form,'Esta escala foi publicada. Reabra antes de editar.');return}
+    const baseline=periods[periodId]?.meetings?.[meetingId]
+    if(!baseline){editorError(form,'A reunião não está mais disponível.');return}
+    const next=structuredClone(baseline), changedRoles:TaskRole[]=[]
+    for(const select of form.querySelectorAll<HTMLSelectElement>('[data-meeting-role]')){
+      const role=select.dataset.meetingRole as TaskRole
+      if(select.value===(assignmentForRole(baseline,role)??''))continue
+      changedRoles.push(role)
+      next.assignments??={};next.manualEdits??={}
+      if(select.value){next.assignments[role]=select.value;next.manualEdits[role]=true}
+      else{delete next.assignments[role];delete next.manualEdits[role]}
+    }
+    if(!changedRoles.length){closeRecordEditor(form);return}
+    const release=editorBusy(form)
+    try {
+      if(normalizeTaskGenerationRules(planning.engineRules).evitarConflitosOradores){const snapshot=await get(tarefasDiscursosRef);discursos=snapshot.exists()?snapshot.val() as TaskDomainContext['discursos']: {}}
+      const conflicts=changedRoles.flatMap(role=>{const id=String(next.assignments?.[role]??'');const reason=id?manualConflictReason(domainContext(),{periodId,meetingId,meeting:next},role,id):null;return reason?[`${TASK_ROLE_LABELS[role]}: ${reason}`]:[]})
+      if(conflicts.length&&!confirm(`Há conflitos nesta escolha:\n${conflicts.join('\n')}\nManter mesmo assim?`))return
+      await compareAndUpdate(tarefasScaleRef,{[`${periodId}/meetings/${meetingId}`]:baseline},{[`${periodId}/meetings/${meetingId}`]:next})
+      periods[periodId]!.meetings![meetingId]=next
+      toast('Reunião atualizada')
+      renderEscala()
+    } catch {editorError(form,'Não foi possível salvar a reunião. Seu preenchimento foi mantido.')}
+    finally{release()}
   })
 }
 

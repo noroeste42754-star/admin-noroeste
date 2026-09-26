@@ -85,6 +85,7 @@ try {
     await page.locator('#scheduleSearch').dispatchEvent('change')
     await page.getByText('Nenhum resultado para esta busca ou filtro.',{exact:true}).waitFor()
     await page.locator('#clearScheduleFilters').click()
+    await page.locator('.oradores-card').filter({has:page.locator('[data-substitute-date="2026-09-20"]')}).locator('.oradores-more-actions summary').click()
     await page.locator('[data-substitute-date="2026-09-20"]').click()
     assert.equal(await page.locator('#emergencyDate').count(),0)
     assert.equal(await page.locator('#substitutionContext').innerText(),'Substituição para 20/09/2026')
@@ -107,7 +108,7 @@ try {
     assert.match(await page.locator('#repertoirePreview').innerText(),/99.*não cadastrado/)
     await repertoire.fill('25, 1, 38')
     page.once('dialog',dialog=>dialog.dismiss())
-    await page.locator('[data-workspace-tab="programacao"]').click()
+    await page.locator('#cancelSpeakerEdit').click()
     assert.equal(await repertoire.inputValue(),'1, 25, 38')
     failNext=true
     await page.locator('#speakerForm [type="submit"]').click()

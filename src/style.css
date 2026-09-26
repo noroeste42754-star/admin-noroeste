@@ -448,6 +448,22 @@ textarea.form-input {
   color: var(--blue-deep);
 }
 
+body:has(.record-editor-dialog[open]) { overflow: hidden; }
+.record-editor-dialog { max-width: 680px; padding: 0; border: 0; }
+.record-editor-dialog::backdrop { background: rgba(0,0,0,.45); }
+.record-editor-dialog .service-actions { position: sticky; bottom: -22px; z-index: 1; background: var(--surface); padding: 12px 0 0; border-top: 1px solid var(--border); }
+.task-assignment-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; font-size: .8rem; }
+.task-assignment-row > span { color: var(--ink-2); min-width: 86px; }
+.task-assignment-row > strong { flex: 1; min-width: 0; }
+.task-assignment-row .btn { padding: 5px 8px; }
+.task-meeting-fields { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 10px; }
+.oradores-more-actions { margin-top: 8px; }
+.oradores-more-actions > summary { width: fit-content; color: var(--blue-deep); font-size: .82rem; font-weight: 600; cursor: pointer; }
+.oradores-more-actions > .service-actions { margin-top: 8px; }
+@media (max-width: 560px) {
+  .record-editor-dialog { width: 100vw; max-width: none; max-height: 100dvh; height: 100dvh; margin: 0; border-radius: 0; padding-bottom: env(safe-area-inset-bottom); }
+}
+
 .login-agenda-link { margin-top: 10px; text-decoration: none; }
 .agenda-standalone #agendaShell { display: flex; flex-direction: column; min-height: 100dvh; }
 .agenda-standalone #agendaShell.hidden { display: none; }
@@ -955,8 +971,6 @@ textarea.form-input {
 .task-scale-table thead th { position:sticky; top:0; z-index:1; background:var(--surface-2); color:var(--ink-2); text-align:left; }
 .task-scale-table thead th:first-child, .task-scale-table tbody th { width:92px; text-align:left; }
 .task-scale-table tbody th small { display:block; margin-top:3px; color:var(--ink-3); }
-.task-scale-table .tarefas-assignment-select { width:100%; min-width:0; }
-.task-scale-table .tarefas-assignment-select + span, .task-scale-table label > span { display:none; }
 .task-not-applicable { color:var(--ink-3); }
 
 .admin-reminder-grid { display: grid; grid-template-columns: minmax(90px, 1fr) minmax(0, 1fr) minmax(0, 1fr); gap: 8px; }
@@ -1055,6 +1069,7 @@ button:focus-visible, summary:focus-visible { outline:2px solid var(--blue-mid);
 .module-menu-btn:hover { transform:none; box-shadow:none; border-color:var(--blue-mid); }
 .module-menu-btn .mod-icon { border-radius:6px; }
 #appContent .form-panel { border:0; border-radius:0; box-shadow:none; background:transparent; padding:16px 0; border-bottom:1px solid var(--border); }
+#appContent .record-editor-dialog > .form-panel { border:0; box-shadow:none; background:var(--surface); margin:0; padding:22px; }
 #appContent details.form-panel { padding:0; }
 #appContent details > summary { min-height:48px; }
 #appContent .form-panel .form-panel { border-bottom:0; }
@@ -1162,10 +1177,7 @@ button:focus-visible, summary:focus-visible { outline:2px solid var(--blue-mid);
   .availability-table td::before { content:attr(data-time); }
   .availability-table .table-toggle { min-height:44px; padding:8px 12px; }
   .availability-table td:has(input:checked) { border-color:var(--blue-mid); background:var(--surface-2); }
-  .task-mobile-scale .tarefas-assignment-select { min-width:0; flex:1; }
   .service-assignment { grid-template-columns:1fr !important; }
-  .service-assignment details { width:100%; }
-  .service-assignment details select { width:100%; }
   .oradores-card-grid { gap:8px; }
   .workspace-tabs { flex-wrap:nowrap; overflow-x:auto; }
   .workspace-tabs button { flex:0 0 auto; white-space:nowrap; }
@@ -1174,8 +1186,9 @@ button:focus-visible, summary:focus-visible { outline:2px solid var(--blue-mid);
 }
 [data-cleaning-panel][hidden] { display:none !important; }
 @media (max-width:560px) {
-  #oradoresRoot.mobile-schedule-editor > :not(#speakerScheduleForm) { display:none !important; }
-  #oradoresRoot.mobile-schedule-editor #speakerScheduleForm { margin:0; padding-top:0; }
+  .record-editor-dialog { padding:0; max-height:100dvh; }
+  #appContent .record-editor-dialog > .form-panel { min-height:100%; padding:18px 14px; display:flex; flex-direction:column; }
+  .record-editor-dialog .service-actions { margin-top:auto; bottom:0; }
   #speakerScheduleForm .service-actions { padding:12px 0; }
   #speakerScheduleForm .service-actions > .btn-danger { flex:1 1 100%; margin-top:16px; }
 }

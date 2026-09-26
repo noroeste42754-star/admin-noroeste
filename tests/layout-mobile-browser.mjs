@@ -47,12 +47,14 @@ try {
    if(module==='tarefas'&&width<=560){
     const card=page.locator('.task-mobile-scale [data-task-meeting-id]').first();await card.waitFor()
     assert.equal(await card.getAttribute('open'),null)
-    await card.locator('summary').first().click();assert.equal(await card.locator('select').first().isVisible(),true)
+    await card.locator('summary').first().click();await card.locator('[data-edit-meeting]').click()
+    assert.equal(await page.locator('#taskMeetingForm [data-meeting-role]').first().isVisible(),true)
+    await page.locator('#cancelTaskMeeting').click()
    }
    if(module==='oradores'){
     await page.locator('[data-workspace-tab="programacao"]').click()
     await page.locator('#newSchedule').click()
-    if(width<=560)assert.equal(await page.locator('#scheduleSearch').isVisible(),false)
+    assert.equal(await page.locator('#speakerScheduleForm').isVisible(),true)
     await page.locator('#cancelScheduleEdit').click()
     assert.equal(await page.locator('#scheduleSearch').count(),0)
    }
@@ -75,9 +77,10 @@ try {
     assert.equal(await page.locator('#mTarget').inputValue(),'p')
    }
    if(module==='servicoCampo'){
-    assert.equal(await page.locator('[data-service-leader]').isVisible(),false)
-    await page.locator('.service-assignment summary').click()
-    assert.equal(await page.locator('[data-service-leader]').isVisible(),true)
+    assert.equal(await page.locator('#serviceLeaderForm').count(),0)
+    await page.locator('[data-service-edit-leader]').click()
+    assert.equal(await page.locator('#serviceLeaderForm select[name="leaderId"]').isVisible(),true)
+    await page.locator('#cancelServiceLeader').click()
    }
    if(module==='individual'){
     await page.getByText(/Atualizada em/).waitFor()

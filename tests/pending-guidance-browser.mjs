@@ -27,7 +27,7 @@ try{
   await home();await page.locator('[data-menu-card="tarefas"]').click()
   await page.locator('[data-workspace-tab="pendencias"]').click()
   await page.locator('[data-pending-index]').filter({hasText:'Presidente aponta para pessoa inexistente'}).click()
-  assert.equal(await page.evaluate(()=>document.activeElement?.getAttribute('data-role')),'presidente')
+  assert.equal(await page.evaluate(()=>document.activeElement?.getAttribute('data-meeting-role')),'presidente')
   assert.equal(await page.locator('.correction-target').isVisible(),true)
   source.tarefas.scale.periods['2026-10'].locked=true
   await home();await page.locator('[data-menu-card="tarefas"]').click()
@@ -52,7 +52,7 @@ try{
   if(width===390){assert.ok(await page.locator('#lInicio').evaluate(el=>getComputedStyle(el).fontSize==='16px'))}
   await home();await page.locator('[data-menu-card="servicoCampo"]').click()
   await page.locator('[data-field-pending="s"]').click()
-  assert.equal(await page.locator('[data-service-leader="s"]').evaluate(el=>el===document.activeElement),true)
+  assert.equal(await page.locator('#serviceLeaderForm select[name="leaderId"]').evaluate(el=>el===document.activeElement),true)
   assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1),true)
   assert.deepEqual(errors,[]);assert.deepEqual(writes,[])
   console.log(`Pendências ${width}px: função inexistente, dupla, Admin/telefone e configuração recolhida OK`)

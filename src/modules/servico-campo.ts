@@ -1,5 +1,5 @@
 import { renderPublicationStatus } from './module-publication'
-import { substitutionDialog } from '../ui/substitution-dialog'
+import { closeRecordEditor, mountRecordEditor } from '../ui/record-editor'
 import { fieldSubstitutes } from './substitution-domain'
 import { focusCorrection, fieldHelp } from '../ui/field-guidance'
 import { fortalezaCurrentMonth, fortalezaToday, isValidCivilDate, nextCivilMonth } from './civil-date'
@@ -26,6 +26,8 @@ let people: RawPessoas = {}
 let congregation: ConfigCongregacao = { nome:'Noroeste', cidade:'', circuito:'', idioma:'pt-BR' }
 let selectedMonth = localStorage.getItem(MONTH_KEY) ?? fortalezaCurrentMonth()
 let editingTemplateId = ''
+let creatingTemplate = false
+let manualEditorOpen = false
 let changingPublication = false
 let downloadingPdf = false
 let generatingPeriod = false
@@ -57,7 +59,7 @@ function sectionTitle(title: string): string { return `<div class="module-sectio
 
 export default function mount(appContext: AppContext): void {
   if(appContext.overview)selectedMonth=appContext.overview.month
-  screen = 'programacao'; editingTemplateId = ''; loadPromise = null; data = {}; people = {}
+  screen = 'programacao'; editingTemplateId = ''; creatingTemplate = false; manualEditorOpen = false; loadPromise = null; data = {}; people = {}
   const host = document.getElementById('appContent'); if (!host) return
   host.innerHTML = '<div id="serviceNav"></div><div id="servicoCampoRoot"></div>'
   void openScreen('programacao')
@@ -80,6 +82,7 @@ async function load(): Promise<boolean> {
 
 async function openScreen(next: Screen): Promise<void> {
   const host = root()
+  manualEditorOpen = false; creatingTemplate = false; editingTemplateId = ''
   screen = next
   renderNavigation()
   host.innerHTML = `${moduleTitle('Serviço de Campo')}<p class="empty-state">Carregando dados...</p>`
@@ -125,7 +128,29 @@ function leaderOptions(selected = ''): string {
 }
 
 function assignmentRow(assignment: FieldServiceAssignment, locked: boolean): string {
-  return `<article class="service-assignment"><div class="service-assignment-date"><strong>${esc(dateLabel(assignment.date))}</strong><span>${esc(assignment.time)}</span></div><div><strong>${esc(assignment.location)}</strong><small>${esc(assignment.label)}${assignment.manual ? ' · Adicionada manualmente' : ''}</small></div><details class="service-assignment-editor"><summary>${esc(personName(assignment.leaderId))} · ${locked ? 'Publicado' : 'Editar dirigente'}</summary><select aria-label="Dirigente de ${esc(dateLabel(assignment.date))} às ${esc(assignment.time)}" class="form-select" data-service-leader="${esc(assignment.id)}" ${locked ? 'disabled' : ''}>${leaderOptions(assignment.leaderId)}</select>${locked ? '' : `<button class="btn btn-danger" type="button" data-service-delete="${esc(assignment.id)}" title="Remover saída">Remover saída</button>`}</details></article>`
+  return `<article class="service-assignment"><div class="service-assignment-date"><strong>${esc(dateLabel(assignment.date))}</strong><span>${esc(assignment.time)}</span></div><div><strong>${esc(assignment.location)}</strong><small>${esc(assignment.label)}${assignment.manual ? ' · Adicionada manualmente' : ''}</small><small>Dirigente: ${esc(personName(assignment.leaderId))}</small></div>${locked ? '' : `<div class="service-actions"><button class="btn btn-ghost" type="button" data-service-edit-leader="${esc(assignment.id)}">Editar dirigente</button><button class="btn btn-danger" type="button" data-service-delete="${esc(assignment.id)}" title="Remover saída">Remover saída</button></div>`}</article>`
+}
+
+function openLeaderEditor(assignment: FieldServiceAssignment): void {
+  if (currentPeriod()?.published) return
+  const host = root()
+  const candidates = fieldSubstitutes(assignment, Object.values(currentPeriod()?.assignments ?? {}), data.leaders ?? {}, people)
+  const options = `<option value="">A definir</option>${assignment.leaderId ? `<option value="${esc(assignment.leaderId)}" selected>${esc(personName(assignment.leaderId))} · atual</option>` : ''}${candidates.map(item=>`<option value="${esc(item.id)}" ${item.reason?'disabled':''}>${esc(item.name)} · ${item.count} saída(s)${item.reason?` · ${esc(item.reason)}`:''}</option>`).join('')}`
+  const form = document.createElement('form')
+  form.id = 'serviceLeaderForm'
+  form.className = 'form-panel'
+  form.innerHTML = `<h3>Editar dirigente</h3><p class="form-help">${esc(dateLabel(assignment.date))} · ${esc(assignment.time)} · ${esc(assignment.location)}</p><label class="form-field"><span>Dirigente</span><select name="leaderId" class="form-select">${options}</select></label><p class="form-help">Candidatos com menos saídas aparecem primeiro. Conflitos não podem ser escolhidos.</p><div class="service-actions"><button class="btn btn-primary" type="submit">Salvar</button><button id="cancelServiceLeader" class="btn btn-ghost" type="button">Cancelar</button></div>`
+  host.append(form)
+  mountRecordEditor(host, form.id)
+  form.querySelector('#cancelServiceLeader')?.addEventListener('click', () => closeRecordEditor(form))
+  form.addEventListener('submit', async event => {
+    event.preventDefault()
+    const selected = (form.elements.namedItem('leaderId') as HTMLSelectElement).value
+    if (selected === assignment.leaderId) { closeRecordEditor(form); return }
+    const release = editorBusy(form)
+    try { if (!await changeLeader(assignment.id, selected)) editorError(form, 'Não foi possível salvar o dirigente. Sua escolha foi mantida.') }
+    finally { release() }
+  })
 }
 
 function renderSchedule(): void {
@@ -134,6 +159,7 @@ function renderSchedule(): void {
   const nextMonth = nextCivilMonth(fortalezaToday())
   const prepareNext = !periods()[nextMonth] && Object.values(templates()).some(item => item.active !== false)
   root().innerHTML = `${sectionTitle('Programação de Serviço de Campo')}${periodControl()}<span class="admin-badge">${locked ? 'Publicado' : 'Rascunho'}</span>${locked ? '<div class="notice">Este mês está publicado no Quadro e bloqueado para edição.</div>' : ''}<div class="service-summary"><div><strong>${assignments.length}</strong><span>Saídas</span></div><div><strong>${blank}</strong><span>Sem dirigente</span></div></div><div class="service-actions"><button id="serviceGenerate" class="btn ${assignments.length ? 'btn-ghost' : 'btn-primary'}" type="button" ${locked ? 'disabled' : ''}>${assignments.length ? 'Completar mês' : 'Gerar rodízio'}</button><button id="servicePdf" class="btn btn-ghost" type="button" ${assignments.length ? '' : 'disabled'}>Baixar PDF</button>${!locked ? `<button id="servicePublish" class="btn btn-primary" type="button" ${assignments.length ? '' : 'disabled'}>Publicar no Quadro</button>` : ''}${locked ? '<button id="serviceReopen" class="btn btn-ghost" type="button">Reabrir para edição</button>' : ''}</div>${locked ? '' : manualAssignmentForm()}<div class="service-assignment-list">${assignments.map(item => assignmentRow(item, locked)).join('') || '<p class="empty-state">Configure as saídas e gere o rodízio deste mês.</p>'}</div>`
+  if (manualEditorOpen && !locked) mountRecordEditor(root(), 'manualServiceForm')
   if (prepareNext) root().querySelector('.service-summary')?.insertAdjacentHTML('beforebegin', `<div class="notice">Prepare o rodízio de ${nextMonth.slice(5,7)}/${nextMonth.slice(0,4)} antes do dia 1º. <button id="servicePrepareNext" class="btn btn-ghost" type="button">Abrir próximo mês</button></div>`)
   document.getElementById('servicePrepareNext')?.addEventListener('click', () => { selectedMonth=nextMonth; localStorage.setItem(MONTH_KEY,nextMonth); render() })
   const problems=assignments.filter(item=>!item.leaderId||!eligible.has(item.leaderId)||fieldServiceConflicts(assignments).some(conflict=>conflict.id===item.id))
@@ -141,7 +167,9 @@ function renderSchedule(): void {
   notices.innerHTML=problems.map(item=>`<button type="button" class="oradores-pending" data-field-pending="${esc(item.id)}"><span><strong>Impede publicar · ${esc(dateLabel(item.date))} · ${esc(item.time)}</strong><small>${item.leaderId&&eligible.has(item.leaderId)?'Dirigente com saídas simultâneas':'Defina um dirigente ativo'} — toque para corrigir.</small></span><span aria-hidden="true">›</span></button>`).join('')
   root().querySelector('.service-assignment-list')?.before(notices)
   notices.querySelectorAll<HTMLButtonElement>('[data-field-pending]').forEach(button=>button.addEventListener('click',()=>{
-    focusCorrection(locked?document.getElementById('serviceReopen'):[...root().querySelectorAll<HTMLElement>('[data-service-leader]')].find(select=>select.dataset.serviceLeader===button.dataset.fieldPending)??null)
+    if(locked){focusCorrection(document.getElementById('serviceReopen'));return}
+    const item=period?.assignments[button.dataset.fieldPending!]
+    if(item){openLeaderEditor(item);focusCorrection(root().querySelector<HTMLElement>('#serviceLeaderForm select[name="leaderId"]'))}
   }))
   fieldHelp(root(),'#manualServiceForm [name="location"]','Ex.: Salão do Reino ou Rua das Flores, 25. Use um local fácil de reconhecer.')
   fieldHelp(root(),'#manualServiceForm [name="leaderId"]','Selecione um dirigente aprovado. Não é criado um novo cadastro aqui.')
@@ -151,21 +179,16 @@ function renderSchedule(): void {
   document.getElementById('servicePdf')?.addEventListener('click', () => void openPdf())
   document.getElementById('serviceReopen')?.addEventListener('click', () => void reopenPeriod())
   document.getElementById('manualServiceForm')?.addEventListener('submit', event => { event.preventDefault(); void addManualAssignment(event.currentTarget as HTMLFormElement) })
-  document.querySelectorAll<HTMLSelectElement>('[data-service-leader]').forEach(select => select.addEventListener('change', () => void changeLeader(select.dataset.serviceLeader!, select.value)))
-  document.querySelectorAll<HTMLSelectElement>('[data-service-leader]').forEach(select=>{
-    if(locked)return
-    const button=document.createElement('button');button.className='btn btn-ghost';button.type='button';button.textContent='Buscar substituto';button.dataset.serviceSubstitute=select.dataset.serviceLeader
-    select.before(button)
-    button.addEventListener('click',()=>{
-      const item=period?.assignments[select.dataset.serviceLeader!];if(!item)return
-      substitutionDialog({title:`Dirigente · ${dateLabel(item.date)} · ${item.time}`,current:personName(item.leaderId),candidates:fieldSubstitutes(item,assignments,data.leaders??{},people),save:id=>changeLeader(item.id,id)})
-    })
-  })
+  document.getElementById('newManualService')?.addEventListener('click', () => { manualEditorOpen = true; renderSchedule() })
+  document.getElementById('cancelManualService')?.addEventListener('click', () => { manualEditorOpen = false; renderSchedule() })
+  document.querySelectorAll<HTMLButtonElement>('[data-service-edit-leader]').forEach(button=>button.addEventListener('click',()=>{
+    const item=period?.assignments[button.dataset.serviceEditLeader!];if(item)openLeaderEditor(item)
+  }))
   document.querySelectorAll<HTMLButtonElement>('[data-service-delete]').forEach(button => button.addEventListener('click', () => void deleteAssignment(button.dataset.serviceDelete!)))
 }
 
 function manualAssignmentForm(): string {
-  return `<details class="service-manual"><summary>Adicionar saída</summary><form id="manualServiceForm" class="form-panel"><div class="module-form-grid"><label class="form-field"><span>Data</span><input name="date" type="date" value="${selectedMonth}-01" required></label><label class="form-field"><span>Hora</span><input name="time" type="time" value="08:30" required></label><label class="form-field"><span>Local</span><input name="location" maxlength="80" required></label><label class="form-field"><span>Descrição</span><input name="label" maxlength="60" value="Saída de campo"></label><label class="form-field"><span>Dirigente</span><select name="leaderId">${leaderOptions()}</select></label></div><button class="btn btn-ghost" type="submit">Adicionar à programação</button></form></details>`
+  return `<button id="newManualService" class="btn btn-ghost" type="button">Adicionar saída</button><div hidden><form id="manualServiceForm" class="form-panel"><h3>Adicionar saída</h3><div class="module-form-grid"><label class="form-field"><span>Data</span><input name="date" type="date" value="${selectedMonth}-01" required></label><label class="form-field"><span>Hora</span><input name="time" type="time" value="08:30" required></label><label class="form-field"><span>Local</span><input name="location" maxlength="80" required></label><label class="form-field"><span>Descrição</span><input name="label" maxlength="60" value="Saída de campo"></label><label class="form-field"><span>Dirigente</span><select name="leaderId">${leaderOptions()}</select></label></div><div class="service-actions"><button class="btn btn-primary" type="submit">Salvar saída</button><button id="cancelManualService" class="btn btn-ghost" type="button">Cancelar</button></div></form></div>`
 }
 
 async function generatePeriod(): Promise<void> {
@@ -196,7 +219,7 @@ async function addManualAssignment(form: HTMLFormElement): Promise<void> {
   const current = currentPeriod() ?? { month:selectedMonth, assignments:{}, published:false }
   if(fieldServiceConflicts([...Object.values(current.assignments),assignment]).length){toast('O dirigente já tem uma saída na mesma data e horário');return}
   const release=editorBusy(form)
-  try { await compareAndSet(child(servicoCampoRef, `periods/${selectedMonth}`), currentPeriod() ?? null, { ...current, assignments:{ ...current.assignments, [assignmentId]:assignment } }); current.assignments[assignmentId] = assignment; data.periods = { ...periods(), [selectedMonth]:current }; toast('Saída adicionada'); render() } catch (error) { editorError(form, failureMessage(error, 'Não foi possível adicionar a saída. Seu preenchimento foi mantido.'));toast(failureMessage(error, 'Não foi possível adicionar a saída')) } finally { release() }
+  try { await compareAndSet(child(servicoCampoRef, `periods/${selectedMonth}`), currentPeriod() ?? null, { ...current, assignments:{ ...current.assignments, [assignmentId]:assignment } }); current.assignments[assignmentId] = assignment; data.periods = { ...periods(), [selectedMonth]:current }; manualEditorOpen = false; toast('Saída adicionada'); render() } catch (error) { editorError(form, failureMessage(error, 'Não foi possível adicionar a saída. Seu preenchimento foi mantido.'));toast(failureMessage(error, 'Não foi possível adicionar a saída')) } finally { release() }
 }
 
 async function deleteAssignment(assignmentId: string): Promise<void> {
@@ -255,7 +278,7 @@ function renderConfiguration(): void {
   const leaderRows = Object.entries(people).filter(([, person]) => person.active !== false && person.sex === 'M').sort((a, b) => a[1].name.localeCompare(b[1].name, 'pt-BR')).map(([masterId, person]) => `<label class="service-leader-option"><input type="checkbox" data-service-eligible="${esc(masterId)}" ${data.leaders?.[masterId] ? 'checked' : ''}><span><strong>${esc(person.name)}</strong><small>${esc(roleLabel(person))}</small></span></label>`).join('')
   const ownLeaderRows = leaderIds().map(masterId => `<label class="service-leader-option"><input name="templateLeader" type="checkbox" value="${esc(masterId)}" ${current?.leaderIds?.includes(masterId) ? 'checked' : ''}><span><strong>${esc(personName(masterId))}</strong><small>${esc(roleLabel(people[masterId]!))}</small></span></label>`).join('')
   root().innerHTML = `${sectionTitle('Configuração do Serviço de Campo')}
-    <details ${current ? 'open' : ''}><summary>${current ? 'Editar saída' : 'Nova saída'}</summary><form id="serviceTemplateForm" class="form-panel"><h3>${current ? 'Editar saída' : 'Nova saída'}</h3>
+    <button id="newServiceTemplate" class="btn btn-primary" type="button">Nova saída recorrente</button><details hidden><summary>${current ? 'Editar saída' : 'Nova saída'}</summary><form id="serviceTemplateForm" class="form-panel"><h3>${current ? 'Editar saída' : 'Nova saída'}</h3>
       <input name="templateId" type="hidden" value="${esc(current?.id)}">
       <div class="module-form-grid">
         <label class="form-field"><span>Programação</span><select name="mode"><option value="weekly" ${!current?.date ? 'selected' : ''}>Dia da semana</option><option value="date" ${current?.date ? 'selected' : ''}>Data específica</option></select></label>
@@ -267,12 +290,13 @@ function renderConfiguration(): void {
         <label><input name="active" type="checkbox" ${current?.active !== false ? 'checked' : ''}> Saída ativa</label>
       </div>
       <details><summary>Mais opções</summary><label class="form-field"><span>Ordem de exibição</span><input name="sortOrder" type="number" min="0" value="${current?.sortOrder ?? Object.keys(templates()).length}"></label></details>
-      <details><summary>Dirigentes deste arranjo</summary><div class="service-leader-grid">${ownLeaderRows || '<p class="empty-state">Nenhum dirigente aprovado.</p>'}</div></details>
-      <div class="service-actions"><button class="btn btn-primary" type="submit">Salvar saída</button>${current ? '<button id="cancelServiceTemplate" class="btn btn-ghost" type="button">Cancelar</button>' : ''}</div>
+      <details ${!current?.leaderIds?.length?'open':''}><summary>Dirigentes deste arranjo</summary><div class="service-leader-grid">${ownLeaderRows || '<p class="empty-state">Nenhum dirigente aprovado.</p>'}</div></details>
+      <div class="service-actions"><button class="btn btn-primary" type="submit">Salvar saída</button><button id="cancelServiceTemplate" class="btn btn-ghost" type="button">Cancelar</button></div>
     </form></details>
     <details open><summary>Saídas recorrentes · ${Object.keys(templates()).length}</summary><div class="module-option-list">${templateRows || '<p class="empty-state">Nenhuma saída cadastrada.</p>'}</div></details>
     <details class="form-panel" data-editor-scope><summary>Dirigentes aprovados · ${leaderIds().length}</summary><div class="service-leader-grid">${leaderRows || '<p class="empty-state">Nenhum irmão ativo disponível no cadastro Admin.</p>'}</div><button id="saveServiceLeaders" class="btn btn-primary" type="button">Salvar dirigentes</button></details>
     `
+  if (current || creatingTemplate) mountRecordEditor(root(), 'serviceTemplateForm')
   const form = document.getElementById('serviceTemplateForm') as HTMLFormElement
   const syncMode = (): void => {
     const byDate = (form.elements.namedItem('mode') as HTMLSelectElement).value === 'date'
@@ -283,8 +307,9 @@ function renderConfiguration(): void {
   form.querySelector('[name="mode"]')!.addEventListener('change', syncMode)
   syncMode()
   document.getElementById('serviceTemplateForm')?.addEventListener('submit', event => { event.preventDefault(); void saveTemplate(event.currentTarget as HTMLFormElement) })
-  document.getElementById('cancelServiceTemplate')?.addEventListener('click', () => { editingTemplateId = ''; render() })
-  document.querySelectorAll<HTMLButtonElement>('[data-edit-service-template]').forEach(button => button.addEventListener('click', () => { editingTemplateId = button.dataset.editServiceTemplate!; render() }))
+  document.getElementById('cancelServiceTemplate')?.addEventListener('click', () => { editingTemplateId = ''; creatingTemplate = false; render() })
+  document.getElementById('newServiceTemplate')?.addEventListener('click', () => { editingTemplateId = ''; creatingTemplate = true; render() })
+  document.querySelectorAll<HTMLButtonElement>('[data-edit-service-template]').forEach(button => button.addEventListener('click', () => { editingTemplateId = button.dataset.editServiceTemplate!; creatingTemplate = false; render() }))
   document.querySelectorAll<HTMLButtonElement>('[data-delete-service-template]').forEach(button => button.addEventListener('click', () => void deleteTemplate(button.dataset.deleteServiceTemplate!)))
   document.getElementById('saveServiceLeaders')?.addEventListener('click', () => void saveLeaders())
 }
@@ -301,7 +326,7 @@ async function saveTemplate(form: HTMLFormElement): Promise<void> {
     item.date = date
   }
   const release=editorBusy(form)
-  try { await update(servicoCampoRef, { [`templates/${templateId}`]:item }); data.templates = { ...templates(), [templateId]:item }; editingTemplateId = ''; toast('Saída recorrente salva'); render() } catch { editorError(form);toast('Não foi possível salvar a saída') } finally { release() }
+  try { await update(servicoCampoRef, { [`templates/${templateId}`]:item }); data.templates = { ...templates(), [templateId]:item }; editingTemplateId = ''; creatingTemplate = false; toast('Saída recorrente salva'); render() } catch { editorError(form);toast('Não foi possível salvar a saída') } finally { release() }
 }
 
 async function deleteTemplate(templateId: string): Promise<void> {
