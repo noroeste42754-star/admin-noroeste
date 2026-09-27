@@ -30,6 +30,8 @@ import {
   TASK_ROLES,
   TASK_ROLE_LABELS,
   DEFAULT_TASK_GENERATION_RULES,
+  TASK_GROUPS,
+  TASK_GROUP_LABELS,
   assignmentForRole,
   canonicalMeetingType,
   computeGeneration,
@@ -42,10 +44,15 @@ import {
   personPhone,
   roleApplies,
   normalizeTaskGenerationRules,
+  normalizeTaskGroupTargets,
+  summarizeTaskGroups,
+  validTaskGroupTargets,
   withCanonicalPeriod,
   type TaskDomainContext,
   type TaskEvent,
   type TaskGenerationRules,
+  type TaskGroupTargets,
+  type TaskGroupSummary,
   type TaskMeeting,
   type TaskPeriod,
   type TaskPerson,
@@ -54,6 +61,7 @@ import {
 import { formatTaskDate } from './tarefas-output'
 import { publishModulePeriod, renderPublicationStatus } from './module-publication'
 import { defaultModuleMessageSettings, mountModuleMessageSettings, type ModuleMessageSettings } from './module-message-settings'
+import { ApiError } from '../secure-api'
 
 type TarefasTab = 'indice' | 'escala' | 'participantes' | 'pendencias' | 'config'
 
@@ -76,6 +84,7 @@ interface TarefasPlanning {
   weekendDow?: number
   excludedDates?: string[] | Record<string, string>
   engineRules?: Partial<TaskGenerationRules>
+  groupTargets?: Partial<TaskGroupTargets>
   availabilityReviewedMonth?: string
 }
 
@@ -95,7 +104,7 @@ let discursos: TaskDomainContext['discursos'] = {}
 let taskMessageSettings=defaultModuleMessageSettings('tarefas')
 let cleaningPeriods:Record<string,LimpezaPeriodoGerado>={}
 let congregationName = 'Noroeste'
-let masterPeople: Record<string, { name?: string; whatsapp?: string; active?: boolean }> = {}
+let masterPeople: Record<string, { name?: string; whatsapp?: string; active?: boolean; role?: string | null }> = {}
 let context: AppContext
 const TAREFAS_PERIOD_KEY = 'noroeste:tarefas:period'
 const TAREFAS_PERIOD_MODE_KEY = 'noroeste:tarefas:period-mode'
@@ -112,6 +121,7 @@ let participantRoleFilter = ''
 let pendingTarget: PendingTarget | null = null
 let downloadingPdf = false
 let changingPublication = false
+let generatingTaskScale = false
 let loadPromise: Promise<boolean> | null = null
 
 
@@ -174,7 +184,7 @@ function meetingRefFor(meeting: TarefasMeeting): { periodId: string; meetingId: 
 }
 
 function domainContext(): TaskDomainContext {
-  return { people: pessoas, periods, events, discursos, engineRules:planning.engineRules }
+  return { people: pessoas, periods, events, discursos, engineRules:planning.engineRules, groupTargets:planning.groupTargets, masterPeople }
 }
 
 function formatDate(value: string | undefined): string {
@@ -259,7 +269,7 @@ async function loadTarefas(): Promise<boolean> {
     discursos = tarefas.discursos ?? {}
     const congregacao = congregacaoSnap.exists() ? (congregacaoSnap.val() as { nome?: string }) : {}
     congregationName = congregacao.nome?.trim() || 'Noroeste'
-    masterPeople = masterPeopleSnap.exists() ? (masterPeopleSnap.val() as Record<string, { name?: string; whatsapp?: string; active?: boolean }>) : {}
+    masterPeople = masterPeopleSnap.exists() ? (masterPeopleSnap.val() as Record<string, { name?: string; whatsapp?: string; active?: boolean; role?: string | null }>) : {}
     pessoas = Object.fromEntries(Object.entries(pessoas).map(([id, person]) => [id, canonicalTaskPerson(id, person, masterPeople)]))
   } catch {
     toast('Erro ao carregar Tarefas')
@@ -343,7 +353,7 @@ function renderEscala(): void {
         <div class="form-group" style="margin:0"><label class="form-label" for="tarefasPeriodMonth">Período</label><input id="tarefasPeriodMonth" class="form-input" type="month" value="${escapeHtml(selectedPeriodMonth)}"></div>
       </div>
       <div class="scale-actions" style="margin-top:8px">
-        <button id="btnGenerateScale" class="btn ${allPeriodMeetings.length ? 'btn-ghost' : 'btn-primary'}" type="button" ${locked ? 'disabled' : ''}>Gerar escala · ${activeRules} regras</button>
+        <button id="btnGenerateScale" class="btn ${allPeriodMeetings.length ? 'btn-ghost' : 'btn-primary'}" type="button" ${locked ? 'disabled' : ''}>Gerar escala · ${activeRules} regras${normalizeTaskGroupTargets(planning.groupTargets).enabled?' · grupos':''}</button>
         <button id="btnTarefasPdf" class="btn btn-ghost" type="button" ${allPeriodMeetings.length ? '' : 'disabled'}>Baixar PDF</button>
         <button id="btnToggleTaskLock" class="btn ${locked ? 'btn-ghost' : 'btn-primary'}" type="button" ${allPeriodMeetings.length ? '' : 'disabled'}>${locked ? 'Reabrir para edição' : 'Publicar no Quadro'}</button>
         <details><summary>Mais opções</summary><button id="btnClearTaskScale" class="btn btn-danger" type="button" ${locked || !allPeriodMeetings.length ? 'disabled' : ''}>Limpar escala</button></details>
@@ -515,6 +525,8 @@ async function clearTaskRole(periodId: string, role: TaskRole): Promise<void> {
 }
 
 async function generateScale(startDate: string, mode: 'month' | 'bimester', role: TaskRole | null, onlyPending: boolean): Promise<void> {
+  if(generatingTaskScale)return
+  generatingTaskScale=true
   const button = document.getElementById('btnGenerateScale') as HTMLButtonElement | null
   if (button) button.disabled = true
   try {
@@ -535,6 +547,11 @@ async function generateScale(startDate: string, mode: 'month' | 'bimester', role
       showGenerationErrors(result.errors)
       return
     }
+    const groupTargetsEnabled=normalizeTaskGroupTargets(planning.groupTargets).enabled
+    if(groupTargetsEnabled){
+      const summary=summarizeTaskGroups(context,canonical.periodId,result.patch)
+      if(!await confirmTaskGroupPreview(summary))return
+    }
     const patch: Record<string, unknown> = {
       'planning/periodMode': mode,
       'planning/editingPeriod': selectedPeriodMonth,
@@ -544,15 +561,41 @@ async function generateScale(startDate: string, mode: 'month' | 'bimester', role
     Object.entries(result.patch).forEach(([path, value]) => {
       patch[`scale/periods/${path}`] = value
     })
-    await update(tarefasRef, patch)
+    if(groupTargetsEnabled){
+      const baseline={planning,scale:{periods}}
+      const expected=Object.fromEntries(Object.keys(patch).map(path=>[
+        path,path.split('/').reduce<unknown>((value,key)=>value&&typeof value==='object'?(value as Record<string,unknown>)[key]:null,baseline)??null,
+      ]))
+      try{await compareAndUpdate(tarefasRef,expected,patch)}catch(error){
+        if(error instanceof ApiError&&error.status===409){toast('A escala mudou enquanto você conferia. Recarregamos os dados; gere novamente.');await loadTarefas();renderEscala();return}
+        throw error
+      }
+    }else await update(tarefasRef, patch)
     planning = { ...nextPlanning, editingPeriod: selectedPeriodMonth, scaleStartDate: undefined, generatedAt }
     toast(result.generated ? `${result.generated} designações geradas; vagas sem candidato ficaram vazias` : 'Escala preparada; vagas sem candidato ficaram vazias')
     await loadTarefas()
   } catch {
     toast('Não foi possível gerar a escala')
   } finally {
+    generatingTaskScale=false
     if (button?.isConnected) button.disabled = false
   }
+}
+
+function confirmTaskGroupPreview(summary: TaskGroupSummary): Promise<boolean> {
+  return new Promise(resolve=>{
+    const overlay=document.createElement('div')
+    overlay.className='modal-overlay'
+    overlay.innerHTML=`<div class="modal" role="dialog" aria-modal="true" aria-labelledby="taskGroupPreviewTitle"><h2 id="taskGroupPreviewTitle">Conferir distribuição</h2><p class="form-help">${summary.total} participação(ões) no período. A mesma pessoa conta uma vez por reunião. Metas são flexíveis; função habilitada, folga e indisponibilidade têm prioridade.</p><div class="module-option-list">${TASK_GROUPS.map(group=>{const item=summary.groups[group];return`<div class="module-list-row"><strong>${TASK_GROUP_LABELS[group]}</strong><span>Meta ${item.targetPercent}% (${item.target}) · Obtido ${item.actual}</span></div>`}).join('')}</div><p class="form-help">Designações manuais e já preservadas entram no total. Confira as diferenças antes de gravar.</p><div class="service-actions"><button id="confirmTaskGroups" class="btn btn-primary" type="button">Gravar escala</button><button id="cancelTaskGroups" class="btn btn-ghost" type="button">Cancelar</button></div></div>`
+    document.body.appendChild(overlay)
+    const close=(confirmed:boolean)=>{document.removeEventListener('keydown',onKeyDown);overlay.remove();resolve(confirmed)}
+    const onKeyDown=(event:KeyboardEvent)=>{if(event.key==='Escape')close(false)}
+    document.addEventListener('keydown',onKeyDown)
+    overlay.querySelector('#confirmTaskGroups')?.addEventListener('click',()=>close(true))
+    overlay.querySelector('#cancelTaskGroups')?.addEventListener('click',()=>close(false))
+    overlay.addEventListener('click',event=>{if(event.target===overlay)close(false)})
+    overlay.querySelector<HTMLButtonElement>('#confirmTaskGroups')?.focus()
+  })
 }
 
 function showGenerationErrors(errors: string[]): void {
@@ -633,9 +676,11 @@ function renderTaskConfig(): void {
   if (!content) return
   const dates = planningExcludedDates().sort()
   const rules = normalizeTaskGenerationRules(planning.engineRules)
+  const groups = normalizeTaskGroupTargets(planning.groupTargets)
   const canEditRules = context.usuario.apps.mestre === true || context.usuario.apps.tarefas === true
   content.innerHTML = `${sectionTitle('Configuração', 'Preferências próprias de Tarefas. O formato e a letra do PDF são ajustados diretamente na Escala.')}
     <div class="form-panel" data-editor-scope><h3 style="margin-top:0">Regras do motor</h3><p class="form-help">Estas opções valem apenas para as próximas gerações. Regras de integridade continuam obrigatórias.</p><div class="engine-rule-list"><label><input id="taskRuleSpeakers" type="checkbox" ${rules.evitarConflitosOradores ? 'checked' : ''} ${canEditRules ? '' : 'disabled'}> Evitar designar quem tem discurso ou saída de Oradores na mesma data (S2)</label><label><input id="taskRulePresident" type="checkbox" ${rules.presidenteSegundaTarefa ? 'checked' : ''} ${canEditRules ? '' : 'disabled'}> Aproveitar o presidente em uma segunda tarefa mecânica</label><label><input id="taskRuleBalance" type="checkbox" ${rules.equilibrarDesignacoes ? 'checked' : ''} ${canEditRules ? '' : 'disabled'}> Equilibrar o total de designações</label><label><input id="taskRuleRepeat" type="checkbox" ${rules.evitarRepetirFuncao ? 'checked' : ''} ${canEditRules ? '' : 'disabled'}> Evitar repetir a mesma função</label></div>${canEditRules ? '<div class="scale-actions" style="margin-top:12px"><button id="saveTaskRules" class="btn btn-primary" type="button">Salvar regras</button><button id="restoreTaskRules" class="btn btn-ghost" type="button">Restaurar padrões</button></div>' : '<div class="notice">Somente o Admin pode alterar estas regras.</div>'}</div>
+    <div class="form-panel" data-editor-scope><h3 style="margin-top:0">Distribuição por grupo</h3><p class="form-help">Defina a participação total desejada de cada grupo na escala. A meta é flexível: aptidão, folga e disponibilidade continuam valendo. Cada pessoa conta uma vez por reunião, mesmo fazendo duas tarefas. Os percentuais iniciais são apenas uma sugestão; nada muda até ativar e salvar.</p><label class="oradores-check"><input id="taskGroupEnabled" type="checkbox" ${groups.enabled?'checked':''} ${canEditRules?'':'disabled'}> Usar metas por grupo nas próximas gerações</label><div class="module-form-grid" style="margin-top:12px">${(['anciaos','servos','jovens'] as const).map(group=>`<label class="form-field"><span>${TASK_GROUP_LABELS[group]} (%)</span><input class="form-input task-group-percent" data-task-group="${group}" type="number" min="0" max="100" step="1" value="${groups[group]}" ${canEditRules?'':'disabled'}></label>`).join('')}<div class="form-field"><span>Demais</span><strong id="taskGroupRemaining">${groups.demais}% (restante automático)</strong></div></div><p id="taskGroupValidation" class="form-help" aria-live="polite">Jovem é a marcação do participante em Tarefas, não uma idade calculada. Sem cargo de ancião ou servo no Admin, a pessoa entra em Demais.</p>${canEditRules?'<button id="saveTaskGroups" class="btn btn-primary" type="button">Salvar distribuição</button>':'<div class="notice">Somente o Admin ou responsável por Tarefas pode alterar esta distribuição.</div>'}</div>
     <div class="form-panel"><h3 style="margin-top:0">Datas sem reunião</h3><div style="display:flex;gap:8px"><input id="taskExcludedDate" class="form-input" type="date"><button id="addTaskExcludedDate" class="btn btn-ghost" type="button">Adicionar</button></div><div class="module-option-list" style="margin-top:10px">${dates.map(date => `<div class="module-list-row"><strong>${escapeHtml(formatDate(date))}</strong><button class="btn btn-danger" data-remove-task-date="${escapeHtml(date)}" type="button">Remover</button></div>`).join('') || '<p class="empty-state">Nenhuma data excluída.</p>'}</div></div><div id="taskMessageSettings"></div>`
   document.getElementById('taskRuleSpeakers')?.closest('.form-panel')?.insertAdjacentHTML('beforeend', '<details class="workspace-disclosure"><summary>Regras fixas sem liga/desliga</summary><p class="form-help">O motor sempre respeita pessoa ativa, função habilitada, tipo de reunião, folga e indisponibilidade cadastradas, reunião bloqueada e incompatibilidade entre funções. Também mantém as restrições de participação dos jovens. Essas proteções não são preferências de distribuição.</p></details>')
   content.querySelectorAll<HTMLElement>(':scope > .form-panel').forEach((panel, index) => {
@@ -645,12 +690,16 @@ function renderTaskConfig(): void {
     const heading = panel.querySelector('h3')
     summary.textContent = heading?.textContent ?? 'Período e impressão'
     heading?.remove()
-    details.open = index === 0
+    details.open = index <= 1
     panel.replaceWith(details)
     details.append(summary, panel)
   })
   document.getElementById('saveTaskRules')?.addEventListener('click', () => void saveTaskRules())
   document.getElementById('restoreTaskRules')?.addEventListener('click', () => void saveTaskRules(DEFAULT_TASK_GENERATION_RULES))
+  document.querySelectorAll<HTMLInputElement>('.task-group-percent').forEach(input=>input.addEventListener('input', updateTaskGroupRemaining))
+  document.getElementById('taskGroupEnabled')?.addEventListener('change', updateTaskGroupRemaining)
+  document.getElementById('saveTaskGroups')?.addEventListener('click', ()=>void saveTaskGroups())
+  updateTaskGroupRemaining()
   document.getElementById('addTaskExcludedDate')?.addEventListener('click', async () => {
     const date = (document.getElementById('taskExcludedDate') as HTMLInputElement).value
     if (!isValidCivilDate(date)) { toast('Escolha uma data válida'); return }
@@ -675,6 +724,44 @@ async function saveTaskRules(value?: TaskGenerationRules): Promise<void> {
   const scope=document.getElementById('saveTaskRules')!.closest<HTMLElement>('[data-editor-scope]')!,release=editorBusy(scope)
   try { await update(tarefasPlanejamentoRef, { engineRules:{ ...next, version:1 } }); planning.engineRules = next; toast(value ? 'Padrões restaurados' : 'Regras salvas'); renderTaskConfig() }
   catch {editorError(scope); toast('Não foi possível salvar as regras') } finally {release()}
+}
+
+function readTaskGroupTargets(): TaskGroupTargets | null {
+  const values = (['anciaos','servos','jovens'] as const).map(group => {
+    const input = document.querySelector<HTMLInputElement>(`[data-task-group="${group}"]`)
+    return input?.value.trim() ? Number(input.value) : NaN
+  })
+  const [anciaos,servos,jovens] = values as [number,number,number]
+  const next: TaskGroupTargets = {
+    enabled:(document.getElementById('taskGroupEnabled') as HTMLInputElement | null)?.checked === true,
+    anciaos, servos, jovens, demais:100-anciaos-servos-jovens,
+  }
+  return validTaskGroupTargets(next) ? next : null
+}
+
+function updateTaskGroupRemaining(): void {
+  const next = readTaskGroupTargets()
+  const remaining = document.getElementById('taskGroupRemaining')
+  const validation = document.getElementById('taskGroupValidation')
+  const button = document.getElementById('saveTaskGroups') as HTMLButtonElement | null
+  if(remaining)remaining.textContent=next?`${next.demais}% (restante automático)`:'Revise os percentuais'
+  if(validation)validation.textContent=next
+    ? 'Jovem é a marcação do participante em Tarefas, não uma idade calculada. Sem cargo de ancião ou servo no Admin, a pessoa entra em Demais.'
+    : 'Use números inteiros de 0 a 100. A soma de anciãos, servos e jovens não pode passar de 100%.'
+  if(button)button.disabled=!next
+}
+
+async function saveTaskGroups(): Promise<void> {
+  if(!context.usuario.apps.mestre&&!context.usuario.apps.tarefas){toast('Sem permissão para configurar Tarefas');return}
+  const next=readTaskGroupTargets()
+  if(!next){toast('Revise os percentuais dos grupos');return}
+  const scope=document.getElementById('saveTaskGroups')!.closest<HTMLElement>('[data-editor-scope]')!,release=editorBusy(scope)
+  try{
+    await update(tarefasPlanejamentoRef,{groupTargets:next})
+    planning.groupTargets=next
+    toast(next.enabled?'Distribuição por grupo ativada':'Distribuição por grupo desativada')
+    renderTaskConfig()
+  }catch{editorError(scope);toast('Não foi possível salvar a distribuição')}finally{release()}
 }
 
 type PendingLevel = 'alta' | 'media' | 'baixa'

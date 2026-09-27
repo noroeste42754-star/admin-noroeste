@@ -52,7 +52,31 @@ export interface TaskPeriod {
   meetings?: Record<string, TaskMeeting>
   generatedAt?: string
   generatedCols?: Record<string, boolean>
-  appliedRules?: TaskGenerationRules & { version: number }
+  appliedRules?: TaskGenerationRules & { version: number; groupTargets?: TaskGroupTargets }
+}
+
+export const TASK_GROUPS = ['anciaos', 'servos', 'jovens', 'demais'] as const
+export type TaskGroup = typeof TASK_GROUPS[number]
+export const TASK_GROUP_LABELS: Record<TaskGroup, string> = {
+  anciaos:'Anciãos', servos:'Servos ministeriais', jovens:'Jovens', demais:'Demais',
+}
+export interface TaskGroupTargets {
+  enabled: boolean
+  anciaos: number
+  servos: number
+  jovens: number
+  demais: number
+}
+
+export function validTaskGroupTargets(value: TaskGroupTargets): boolean {
+  return TASK_GROUPS.every(group => Number.isInteger(value[group]) && value[group] >= 0 && value[group] <= 100) &&
+    TASK_GROUPS.reduce((sum, group) => sum + value[group], 0) === 100
+}
+
+export function normalizeTaskGroupTargets(value?: Partial<TaskGroupTargets>): TaskGroupTargets {
+  const anciaos = Number(value?.anciaos), servos = Number(value?.servos), jovens = Number(value?.jovens)
+  const normalized = { enabled:value?.enabled === true, anciaos, servos, jovens, demais:100 - anciaos - servos - jovens }
+  return validTaskGroupTargets(normalized) ? normalized : { enabled:false, anciaos:25, servos:25, jovens:10, demais:40 }
 }
 
 export interface TaskGenerationRules {
@@ -95,6 +119,8 @@ export interface TaskDomainContext {
     programacao?: Record<string, { data?: string; secao?: string; oradorId?: string; oradorSecundarioId?: string }>
   }
   engineRules?: Partial<TaskGenerationRules>
+  groupTargets?: Partial<TaskGroupTargets>
+  masterPeople?: Record<string, { role?: string | null }>
   people: Record<string, TaskPerson>
   periods: Record<string, TaskPeriod>
   events: Record<string, TaskEvent>
@@ -132,6 +158,46 @@ export interface GenerationResult {
   patch: Record<string, unknown>
   generated: number
   errors: string[]
+}
+
+export interface TaskGroupSummary {
+  total: number
+  groups: Record<TaskGroup, { targetPercent: number; target: number; actual: number }>
+}
+
+export function taskGroupForPerson(personId: string, context: Pick<TaskDomainContext, 'people' | 'masterPeople'>): TaskGroup {
+  const person = context.people[personId]
+  if (person?.jovem === true) return 'jovens'
+  const role = context.masterPeople?.[person?.masterId || personId]?.role
+  if (role === 'anciao') return 'anciaos'
+  if (role === 'servo-ministerial') return 'servos'
+  return 'demais'
+}
+
+function groupCounts(): Record<TaskGroup, number> {
+  return { anciaos:0, servos:0, jovens:0, demais:0 }
+}
+
+export function summarizeTaskGroups(context: TaskDomainContext, periodId: string, patch: Record<string, unknown> = {}): TaskGroupSummary {
+  const targets = normalizeTaskGroupTargets(context.groupTargets)
+  const actual = groupCounts()
+  for (const [meetingId, meeting] of Object.entries(context.periods[periodId]?.meetings ?? {})) {
+    if (!canonicalMeetingType(meeting.type)) continue
+    const people = new Set<string>()
+    for (const role of TASK_ROLES) {
+      const path = `${periodId}/meetings/${meetingId}/assignments/${role}`
+      const id = Object.prototype.hasOwnProperty.call(patch, path) ? assignmentId(patch[path]) : assignmentForRole(meeting, role)
+      if (id && context.people[id]) people.add(id)
+    }
+    for (const id of people) actual[taskGroupForPerson(id, context)] += 1
+  }
+  const total = TASK_GROUPS.reduce((sum, group) => sum + actual[group], 0)
+  const exact = TASK_GROUPS.map(group => ({ group, exact:total * targets[group] / 100 }))
+  const planned = Object.fromEntries(exact.map(item => [item.group, Math.floor(item.exact)])) as Record<TaskGroup, number>
+  let remaining = total - TASK_GROUPS.reduce((sum, group) => sum + planned[group], 0)
+  exact.sort((a, b) => (b.exact - Math.floor(b.exact)) - (a.exact - Math.floor(a.exact)) || TASK_GROUPS.indexOf(a.group) - TASK_GROUPS.indexOf(b.group))
+  for (const item of exact) { if (remaining <= 0) break; planned[item.group] += 1; remaining -= 1 }
+  return { total, groups:Object.fromEntries(TASK_GROUPS.map(group => [group, { targetPercent:targets[group], target:planned[group], actual:actual[group] }])) as TaskGroupSummary['groups'] }
 }
 
 export function canonicalMeetingType(raw: unknown): TaskMeetingType | null {
@@ -287,14 +353,22 @@ function emptyStats(): PersonStats {
   return { total: 0, byRole: { presidente: 0, operador: 0, leitor: 0, entrada: 0, auditorio: 0, microfone: 0 } }
 }
 
-function rankCandidates(ids: string[], role: TaskRole, stats: Record<string, PersonStats>, people: Record<string, TaskPerson>, rules: TaskGenerationRules): string[] {
+function rankCandidates(ids: string[], role: TaskRole, stats: Record<string, PersonStats>, context: TaskDomainContext, rules: TaskGenerationRules, groupTotals: Record<TaskGroup, number>): string[] {
   const base = TASK_ROLE_BASE[role]
+  const targets = normalizeTaskGroupTargets(context.groupTargets)
+  const total = TASK_GROUPS.reduce((sum, group) => sum + groupTotals[group], 0)
   return [...ids].sort((a, b) => {
     const sa = stats[a] ?? emptyStats()
     const sb = stats[b] ?? emptyStats()
+    if (targets.enabled) {
+      const groupA = taskGroupForPerson(a, context), groupB = taskGroupForPerson(b, context)
+      const needA = targets[groupA] * (total + 1) / 100 - groupTotals[groupA]
+      const needB = targets[groupB] * (total + 1) / 100 - groupTotals[groupB]
+      if (needA !== needB) return needB - needA
+    }
     return (rules.equilibrarDesignacoes ? Number(sa.total > 0) - Number(sb.total > 0) || sa.total - sb.total : 0) ||
       (rules.evitarRepetirFuncao ? Number(sa.byRole[base] > 0) - Number(sb.byRole[base] > 0) || sa.byRole[base] - sb.byRole[base] : 0) ||
-      personName(people[a], a).localeCompare(personName(people[b], b), 'pt-BR') || a.localeCompare(b)
+      personName(context.people[a], a).localeCompare(personName(context.people[b], b), 'pt-BR') || a.localeCompare(b)
   })
 }
 
@@ -398,6 +472,16 @@ export function computeGeneration(
 
   const targetKeys = new Set(targets.map(entry => `${entry.periodId}/${entry.meetingId}`))
   const stats: Record<string, PersonStats> = {}
+  const groupTotals = groupCounts()
+  const countedParticipations = new Set<string>()
+  const scopePeriods = new Set(targets.map(entry => entry.periodId))
+  const addParticipation = (entry: TaskMeetingEntry, id: string) => {
+    if (!scopePeriods.has(entry.periodId)) return
+    const key = `${entry.periodId}/${entry.meetingId}/${id}`
+    if (countedParticipations.has(key)) return
+    countedParticipations.add(key)
+    groupTotals[taskGroupForPerson(id, context)] += 1
+  }
   const addStat = (id: string, role: TaskRole) => {
     const stat = (stats[id] ??= emptyStats())
     stat.total += 1
@@ -407,7 +491,7 @@ export function computeGeneration(
     const regenerates = targetKeys.has(`${entry.periodId}/${entry.meetingId}`) &&
       (roleFilter === null || roleFilter === role) && entry.meeting.manualEdits?.[role] !== true
     const id = assignmentForRole(entry.meeting, role)
-    if (id && !regenerates) addStat(id, role)
+    if (id && !regenerates) { addStat(id, role); addParticipation(entry, id) }
   }))
 
   const manualErrors: string[] = []
@@ -446,6 +530,7 @@ export function computeGeneration(
         const id = finalAssignments[role]!
         patch[`${entry.periodId}/meetings/${entry.meetingId}/assignments/${role}`] = id
         addStat(id, role)
+        addParticipation(entry, id)
         generated += 1
         return
       }
@@ -454,7 +539,7 @@ export function computeGeneration(
       if (role === 'presidente' && roleFilter === 'presidente') {
         candidates = candidates.filter(id => PRESIDENT_SECONDARY.some(secondary => finalAssignments[secondary] === id))
       }
-      const chosen = rankCandidates(candidates, role, stats, context.people, rules)[0]
+      const chosen = rankCandidates(candidates, role, stats, context, rules, groupTotals)[0]
       if (!chosen) {
         patch[`${entry.periodId}/meetings/${entry.meetingId}/assignments/${role}`] = null
         return
@@ -462,6 +547,7 @@ export function computeGeneration(
       finalAssignments[role] = chosen
       patch[`${entry.periodId}/meetings/${entry.meetingId}/assignments/${role}`] = chosen
       addStat(chosen, role)
+      addParticipation(entry, chosen)
       generated += 1
 
       if (rules.presidenteSegundaTarefa && role === 'presidente' && roleFilter === null) {
@@ -480,7 +566,8 @@ export function computeGeneration(
   const generatedRoles = roleFilter ? [roleFilter] : TASK_ROLES
   ;[...new Set(targets.map(entry => entry.periodId))].forEach(periodId => {
     generatedRoles.forEach(role => { patch[`${periodId}/generatedCols/${role}`] = true })
-    patch[`${periodId}/appliedRules`] = { ...rules, version:1 }
+    const groupTargets = normalizeTaskGroupTargets(context.groupTargets)
+    patch[`${periodId}/appliedRules`] = groupTargets.enabled ? { ...rules, groupTargets, version:2 } : { ...rules, version:1 }
   })
   return { aborted: false, patch, generated, errors: [] }
 }
