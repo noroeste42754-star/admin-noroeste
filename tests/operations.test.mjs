@@ -14,7 +14,7 @@ const person=name=>({name,active:true,sex:'M',limpeza:{grupo:1}})
 const people={m1:person('Ana'),m2:person('Beto'),m3:person('Caio')}
 const entry={id:'event-1',at:'2026-10-01T12:00:00Z',actorId:'u1',actorName:'Admin',module:'tarefas',action:'alterar',paths:[]}
 const fixture=()=>({master:{pessoas:people},tarefas:{people:{p1:{masterId:'m1',roles:{microfone:true}},p2:{masterId:'m2',roles:{microfone:true}},p3:{masterId:'m3',roles:{microfone:true}}},scale:{periods:{'2026-10':{meetings:{a:{date:'2026-10-04',type:'weekend',assignments:{mic1:'p1'}}}}}}}})
-test('substituição em Tarefas exclui atual, bloqueia indisponível e ordena por uso',()=>{
+test('substituição em Tarefas exclui atual, sinaliza indisponível e ordena por uso',()=>{
  const root=fixture(),profiles=root.tarefas.people
  profiles.p1.name='Ana';profiles.p2.name='Beto';profiles.p3.name='Caio';profiles.p2.unavailableDates=['2026-10-04']
  const context={people:profiles,periods:root.tarefas.scale.periods,events:{}}

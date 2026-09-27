@@ -1,5 +1,6 @@
 import { focusCorrection, fieldHelp } from '../ui/field-guidance'
 import { substitutionDialog } from '../ui/substitution-dialog'
+import { confirmAdvisoryWarnings } from '../ui/advisory-confirmation'
 import { closeRecordEditor, mountRecordEditor } from '../ui/record-editor'
 import { taskSubstitutes } from './substitution-domain'
 import { canonicalTaskPerson } from './central-person'
@@ -919,12 +920,11 @@ function bindAssignmentEditors(): void {
     try {
       if(normalizeTaskGenerationRules(planning.engineRules).evitarConflitosOradores)discursos=(await get(tarefasDiscursosRef)).val() as TaskDomainContext['discursos']??{}
       const original=assignmentForRole(entry.meeting,role)
-      substitutionDialog({title:`${TASK_ROLE_LABELS[role]} · ${formatDate(entry.meeting.date)}`,current:original?pessoaNome(pessoas[original]??{},original):'Vago',candidates:taskSubstitutes(domainContext(),entry,role),save:async id=>{
+      substitutionDialog({title:`${TASK_ROLE_LABELS[role]} · ${formatDate(entry.meeting.date)}`,current:original?pessoaNome(pessoas[original]??{},original):'Vago',candidates:taskSubstitutes(domainContext(),entry,role),allowWarnings:true,confirmSelection:async(id,host)=>{
         if(normalizeTaskGenerationRules(planning.engineRules).evitarConflitosOradores)discursos=(await get(tarefasDiscursosRef)).val() as TaskDomainContext['discursos']??{}
         const reason=manualConflictReason(domainContext(),entry,role,id)
-        if(reason)throw new Error(reason)
-        return saveAssignment(periodId,meetingId,role,id)
-      }})
+        return !reason||confirmAdvisoryWarnings(host,'Aviso sobre esta escolha',[`${TASK_ROLE_LABELS[role]}: ${reason}`])
+      },save:async id=>saveAssignment(periodId,meetingId,role,id)})
     }catch{toast('Não foi possível consultar candidatos. Tente novamente.')}
     finally{button.disabled=false}
   }))
@@ -964,17 +964,18 @@ function openMeetingEditor(periodId: string, meetingId: string, meeting: Tarefas
       else{delete next.assignments[role];delete next.manualEdits[role]}
     }
     if(!changedRoles.length){closeRecordEditor(form);return}
-    const release=editorBusy(form)
     try {
       if(normalizeTaskGenerationRules(planning.engineRules).evitarConflitosOradores){const snapshot=await get(tarefasDiscursosRef);discursos=snapshot.exists()?snapshot.val() as TaskDomainContext['discursos']: {}}
       const conflicts=changedRoles.flatMap(role=>{const id=String(next.assignments?.[role]??'');const reason=id?manualConflictReason(domainContext(),{periodId,meetingId,meeting:next},role,id):null;return reason?[`${TASK_ROLE_LABELS[role]}: ${reason}`]:[]})
-      if(conflicts.length&&!confirm(`Há conflitos nesta escolha:\n${conflicts.join('\n')}\nManter mesmo assim?`))return
-      await compareAndUpdate(tarefasScaleRef,{[`${periodId}/meetings/${meetingId}`]:baseline},{[`${periodId}/meetings/${meetingId}`]:next})
-      periods[periodId]!.meetings![meetingId]=next
-      toast('Reunião atualizada')
-      renderEscala()
+      if(conflicts.length&&!await confirmAdvisoryWarnings(form,'Avisos sobre esta reunião',conflicts))return
+      const release=editorBusy(form)
+      try {
+        await compareAndUpdate(tarefasScaleRef,{[`${periodId}/meetings/${meetingId}`]:baseline},{[`${periodId}/meetings/${meetingId}`]:next})
+        periods[periodId]!.meetings![meetingId]=next
+        toast('Reunião atualizada')
+        renderEscala()
+      } finally {release()}
     } catch {editorError(form,'Não foi possível salvar a reunião. Seu preenchimento foi mantido.')}
-    finally{release()}
   })
 }
 

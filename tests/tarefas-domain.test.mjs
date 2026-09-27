@@ -231,7 +231,7 @@ test('preserva a antiga S2 como reunião única e ignora a antiga S1', () => {
   assert.equal(canonicalMeetingType('weekend_s1'), null)
 })
 
-test('período travado e edição manual inválida abortam sem patch parcial', () => {
+test('período travado bloqueia geração, mas escolha manual fora das regras é preservada', () => {
   const locked = baseContext({ p1: basePerson() })
   locked.periods['2026-09'].locked = true
   assert.deepEqual(computeGeneration(locked, '2026-09-01', null, '2026-09-01T12:00:00.000Z').patch, {})
@@ -241,8 +241,22 @@ test('período travado e edição manual inválida abortam sem patch parcial', (
     { date: '2026-09-12', type: 'weekend', assignments: { leitor: 'p1' }, manualEdits: { leitor: true } },
   )
   const result = computeGeneration(invalid, '2026-09-01', null, '2026-09-01T12:00:00.000Z')
-  assert.equal(result.aborted, true)
-  assert.deepEqual(result.patch, {})
+  assert.equal(result.aborted, false)
+  assert.equal(result.patch['2026-09/meetings/m1/assignments/leitor'], undefined)
+  assert.equal(invalid.periods['2026-09'].meetings.m1.assignments.leitor, 'p1')
+  assert.equal(result.patch['2026-09/meetings/m1/assignments/mic1'], null)
+})
+
+test('motor preenche vagas sem invalidar duas escolhas manuais incompatíveis', () => {
+  const context = baseContext(
+    { p1: basePerson({ active: false }), p2: basePerson() },
+    { date: '2026-09-12', type: 'weekend', assignments: { entrada1: 'p1', entrada2: 'p1' }, manualEdits: { entrada1: true, entrada2: true } },
+  )
+  const result = computeGeneration(context, '2026-09-01', null, '2026-09-01T12:00:00.000Z')
+  assert.equal(result.aborted, false)
+  assert.equal(result.patch['2026-09/meetings/m1/assignments/entrada1'], undefined)
+  assert.equal(result.patch['2026-09/meetings/m1/assignments/entrada2'], undefined)
+  assert.ok(result.generated > 0)
 })
 
 test('geração de uma função não exige que as outras colunas já estejam preenchidas', () => {

@@ -376,18 +376,10 @@ function validateMeeting(
   entry: TaskMeetingEntry,
   finalAssignments: Partial<Record<TaskRole, string>>,
   context: TaskDomainContext,
+  generatedRoles: Set<TaskRole>,
 ): string[] {
   const errors: string[] = []
-  const byPerson = new Map<string, TaskRole[]>()
-  TASK_ROLES.forEach(role => {
-    const id = finalAssignments[role]
-    if (id) byPerson.set(id, [...(byPerson.get(id) ?? []), role])
-  })
-  byPerson.forEach((roles, personId) => {
-    const validPair = roles.length === 2 && roles.includes('presidente') && roles.some(role => role !== 'presidente' && PRESIDENT_SECONDARY_SET.has(role))
-    if (roles.length > 1 && !validPair) errors.push(`${entry.meeting.date}: ${personName(context.people[personId], personId)} ocupa funções incompatíveis.`)
-  })
-  TASK_ROLES.forEach(role => {
+  generatedRoles.forEach(role => {
     const id = finalAssignments[role]
     if (!id) return
     const without = { ...finalAssignments }
@@ -494,16 +486,6 @@ export function computeGeneration(
     if (id && !regenerates) { addStat(id, role); addParticipation(entry, id) }
   }))
 
-  const manualErrors: string[] = []
-  targets.forEach(entry => TASK_ROLES.forEach(role => {
-    if (entry.meeting.manualEdits?.[role] !== true) return
-    const id = assignmentForRole(entry.meeting, role)
-    if (!id) return
-    const result = eligibility(id, role, entry.meeting, assignmentsWithout(entry.meeting, role), context)
-    if (!result.eligible) manualErrors.push(`${entry.meeting.date} - ${TASK_ROLE_LABELS[role]} manual: ${result.reason}.`)
-  }))
-  if (manualErrors.length) return { aborted: true, patch: {}, generated: 0, errors: manualErrors }
-
   const patch: Record<string, unknown> = {}
   const errors: string[] = []
   let generated = 0
@@ -558,7 +540,7 @@ export function computeGeneration(
         if (reservedSecondary) finalAssignments[reservedSecondary] = chosen
       }
     })
-    errors.push(...validateMeeting(entry, finalAssignments, context))
+    errors.push(...validateMeeting(entry, finalAssignments, context, new Set(TASK_ROLES.filter(inScope))))
   })
 
   if (errors.length) return { aborted: true, patch: {}, generated: 0, errors: [...new Set(errors)] }
