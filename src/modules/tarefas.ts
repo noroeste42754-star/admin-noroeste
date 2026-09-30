@@ -80,9 +80,11 @@ interface TarefasPlanning {
   generatedAt?: string
   periodMode?: 'month' | 'bimester'
   editingPeriod?: string
-  meetingDays?: { midweekDow?: number; weekendDow?: number }
+  meetingDays?: { midweekDow?: number; weekendDow?: number; weekendS1Dow?: number }
   midweekDow?: number
   weekendDow?: number
+  weekendS1Dow?: number
+  enableSection1?: boolean
   excludedDates?: string[] | Record<string, string>
   engineRules?: Partial<TaskGenerationRules>
   groupTargets?: Partial<TaskGroupTargets>
@@ -215,6 +217,13 @@ function roleLabel(key: string): string {
   return labels[key] ?? key
     .replace(/[_-]+/g, ' ')
     .replace(/\b\w/g, ch => ch.toUpperCase())
+}
+
+function meetingLabel(meeting: TarefasMeeting, compact = false): string {
+  const type = canonicalMeetingType(meeting.type)
+  if (type === 'midweek') return compact ? 'Meio' : 'Meio de semana'
+  if (type === 'weekend_s1') return compact ? '1ª seção' : 'Fim de semana · 1ª seção'
+  return compact ? '2ª seção' : 'Fim de semana · 2ª seção'
 }
 
 export default function mount(ctx: AppContext): void {
@@ -874,13 +883,13 @@ function sectionTitle(title: string, desc: string): string {
 
 function taskDesktopTable(meetings: TarefasMeeting[]): string {
   if (!meetings.length) return emptyState('Nenhuma reunião cadastrada neste período.')
-  return `<div class="task-scale-table-wrap"><table class="task-scale-table"><thead><tr><th>Reunião</th>${TASK_ROLES.map(role => `<th>${escapeHtml(TASK_ROLE_LABELS[role])}</th>`).join('')}</tr></thead><tbody>${meetings.map(meeting => { const ref = meetingRefFor(meeting), locked = ref ? periods[ref.periodId]?.locked === true : false; return `<tr data-task-meeting-id="${escapeHtml(ref?.meetingId)}"><th><strong>${escapeHtml(formatDate(meeting.date))}</strong><small>${canonicalMeetingType(meeting.type) === 'midweek' ? 'Meio' : 'Fim'}</small>${ref&&!locked?`<button class="btn btn-ghost" type="button" data-edit-meeting="${escapeHtml(ref.meetingId)}" data-period="${escapeHtml(ref.periodId)}">Editar</button>`:''}</th>${TASK_ROLES.map(role => `<td>${meetingAllowsRole(meeting, role) && ref ? assignmentEditor(ref.periodId, ref.meetingId, meeting, role, locked) : '<span class="task-not-applicable">—</span>'}</td>`).join('')}</tr>` }).join('')}</tbody></table></div>`
+  return `<div class="task-scale-table-wrap"><table class="task-scale-table"><thead><tr><th>Reunião</th>${TASK_ROLES.map(role => `<th>${escapeHtml(TASK_ROLE_LABELS[role])}</th>`).join('')}</tr></thead><tbody>${meetings.map(meeting => { const ref = meetingRefFor(meeting), locked = ref ? periods[ref.periodId]?.locked === true : false; return `<tr data-task-meeting-id="${escapeHtml(ref?.meetingId)}"><th><strong>${escapeHtml(formatDate(meeting.date))}</strong><small>${meetingLabel(meeting, true)}</small>${ref&&!locked?`<button class="btn btn-ghost" type="button" data-edit-meeting="${escapeHtml(ref.meetingId)}" data-period="${escapeHtml(ref.periodId)}">Editar</button>`:''}</th>${TASK_ROLES.map(role => `<td>${meetingAllowsRole(meeting, role) && ref ? assignmentEditor(ref.periodId, ref.meetingId, meeting, role, locked) : '<span class="task-not-applicable">—</span>'}</td>`).join('')}</tr>` }).join('')}</tbody></table></div>`
 }
 
 const expandedTaskMeetings=new Set<string>()
 function meetingCard(meeting: TarefasMeeting): string {
   const count = assignmentCount(meeting)
-  const type = canonicalMeetingType(meeting.type) === 'midweek' ? 'Meio de semana' : 'Fim de semana'
+  const type = meetingLabel(meeting)
   const ref = meetingRefFor(meeting)
   const locked = ref ? periods[ref.periodId]?.locked === true : false
   const roles = ref ? GENERATED_ROLES.filter(role => meetingAllowsRole(meeting, role)) : []
@@ -945,7 +954,7 @@ function openMeetingEditor(periodId: string, meetingId: string, meeting: Tarefas
   const form = document.createElement('form')
   form.id = 'taskMeetingForm'
   form.className = 'form-panel'
-  form.innerHTML = `<h3>Editar reunião</h3><p class="form-help">${escapeHtml(formatDate(meeting.date))} · ${canonicalMeetingType(meeting.type)==='midweek'?'Meio de semana':'Fim de semana'}</p><div class="task-meeting-fields">${roles.map(role=>`<label class="form-field"><span>${escapeHtml(TASK_ROLE_LABELS[role])}</span><select class="form-select" data-meeting-role="${role}">${options(role)}</select></label>`).join('')}</div><div class="service-actions"><button class="btn btn-primary" type="submit">Salvar reunião</button><button id="cancelTaskMeeting" class="btn btn-ghost" type="button">Cancelar</button></div>`
+  form.innerHTML = `<h3>Editar reunião</h3><p class="form-help">${escapeHtml(formatDate(meeting.date))} · ${meetingLabel(meeting)}</p><div class="task-meeting-fields">${roles.map(role=>`<label class="form-field"><span>${escapeHtml(TASK_ROLE_LABELS[role])}</span><select class="form-select" data-meeting-role="${role}">${options(role)}</select></label>`).join('')}</div><div class="service-actions"><button class="btn btn-primary" type="submit">Salvar reunião</button><button id="cancelTaskMeeting" class="btn btn-ghost" type="button">Cancelar</button></div>`
   host.append(form)
   mountRecordEditor(host, form.id)
   form.querySelector('#cancelTaskMeeting')?.addEventListener('click',()=>closeRecordEditor(form))
@@ -967,6 +976,7 @@ function openMeetingEditor(periodId: string, meetingId: string, meeting: Tarefas
     try {
       if(normalizeTaskGenerationRules(planning.engineRules).evitarConflitosOradores){const snapshot=await get(tarefasDiscursosRef);discursos=snapshot.exists()?snapshot.val() as TaskDomainContext['discursos']: {}}
       const conflicts=changedRoles.flatMap(role=>{const id=String(next.assignments?.[role]??'');const reason=id?manualConflictReason(domainContext(),{periodId,meetingId,meeting:next},role,id):null;return reason?[`${TASK_ROLE_LABELS[role]}: ${reason}`]:[]})
+      if (conflicts.some(reason => reason.includes('outra sessão'))) { editorError(form, conflicts.join('. ')); return }
       if(conflicts.length&&!await confirmAdvisoryWarnings(form,'Avisos sobre esta reunião',conflicts))return
       const release=editorBusy(form)
       try {
@@ -986,6 +996,10 @@ async function saveAssignment(periodId: string, meetingId: string, role: string,
   try {
     const baseline=periods[periodId]?.meetings?.[meetingId]
     if(!baseline)return false
+    if (personId) {
+      const reason = manualConflictReason(domainContext(), { periodId, meetingId, meeting:baseline }, role as TaskRole, personId)
+      if (reason?.includes('outra sessão')) { toast(reason); return false }
+    }
     const next=structuredClone(baseline);next.assignments??={};next.manualEdits??={}
     if(personId){next.assignments[role]=personId;next.manualEdits[role]=true}
     else {delete next.assignments[role];delete next.manualEdits[role]}
@@ -1022,7 +1036,7 @@ function pessoaRow(id: string, p: TarefasPessoa, recentUsage: number, lastUse: s
           ${escapeHtml(pessoaNome(p, id))}
         </div>
         <div style="font-size:.72rem;color:var(--ink-3)">
-          ${active ? 'Ativo' : 'Inativo'} · ${meetings} · ${recentUsage} função${recentUsage === 1 ? '' : 'ões'} em 6 meses${lastUse ? ` · Última ${formatDate(lastUse)}` : ''}
+          ${active ? 'Ativo' : 'Inativo'} · ${meetings}${p.weekendSection ? ` · ${p.weekendSection === 's1' ? '1ª seção' : '2ª seção'}` : ''} · ${recentUsage} função${recentUsage === 1 ? '' : 'ões'} em 6 meses${lastUse ? ` · Última ${formatDate(lastUse)}` : ''}
         </div>
         <div style="font-size:.72rem;color:var(--ink-3);margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${escapeHtml(roles)}</div>
       </div>
@@ -1067,6 +1081,7 @@ function openTaskPersonModal(id: string | null): void {
     <div class="form-group"><label class="form-label" for="taskPersonMaster">Pessoa do cadastro Admin</label><select id="taskPersonMaster" class="form-select" ${!context.usuario.apps.mestre || id && person?.masterId ? 'disabled' : ''}><option value="">Selecionar pelo nome ou ID...</option>${masterOptions}</select></div>
     <div class="module-form-grid">
       <div class="form-group"><label class="form-label" for="taskPersonRule">Reuniões</label><select id="taskPersonRule" class="form-select"><option value="both" ${(person?.rule ?? 'both') === 'both' ? 'selected' : ''}>Todas</option><option value="midweek" ${person?.rule === 'midweek' ? 'selected' : ''}>Meio de semana</option><option value="weekend" ${person?.rule === 'weekend' ? 'selected' : ''}>Fim de semana</option><option value="none" ${person?.rule === 'none' ? 'selected' : ''}>Fora da escala</option></select></div>
+      <div class="form-group"><label class="form-label" for="taskPersonSection">Seção de fim de semana</label><select id="taskPersonSection" class="form-select"><option value="s1" ${person?.weekendSection === 's1' ? 'selected' : ''}>1ª seção</option><option value="s2" ${person?.weekendSection !== 's1' ? 'selected' : ''}>2ª seção</option></select></div>
       <div class="form-group"><label class="form-label" for="taskPersonRest">Referência da folga</label><input id="taskPersonRest" class="form-input" type="date" value="${escapeHtml(person?.refFolgaDate)}"></div>
     </div>
     <div class="form-group"><span class="form-label" style="display:block;margin-bottom:6px">Funções</span><div style="display:grid;grid-template-columns:1fr 1fr;gap:6px">${taskRoleCheck('presidente', 'Presidente', roles.presidente === true)}${taskRoleCheck('operador', 'Operador', roles.operador === true)}${taskRoleCheck('leitor', 'Leitor', roles.leitor === true)}${taskRoleCheck('entrada', 'Entrada', roles.entrada === true)}${taskRoleCheck('auditorio', 'Auditório', roles.auditorio === true)}${taskRoleCheck('microfone', 'Microfone', roles.microfone === true)}</div></div>
@@ -1097,6 +1112,7 @@ async function saveTaskPerson(id: string | null, overlay: HTMLElement): Promise<
   const patch: Record<string, unknown> = {
     [`${finalId}/masterId`]: selectedMasterId,
     [`${finalId}/rule`]: input('taskPersonRule'),
+    [`${finalId}/weekendSection`]: input('taskPersonSection'),
     [`${finalId}/refFolgaDate`]: input('taskPersonRest'),
     [`${finalId}/unavailableDates`]: unavailableDates.length ? unavailableDates : null,
     [`${finalId}/active`]: (document.getElementById('taskPersonActive') as HTMLInputElement).checked,

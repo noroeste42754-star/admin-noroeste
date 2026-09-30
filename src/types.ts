@@ -15,6 +15,7 @@ export type ModuleName =
   | 'limpeza'
   | 'escala'
   | 'oradores'
+  | 'oradoresS1'
   | 'servicoCampo'
   | 'individual'
 
@@ -172,6 +173,7 @@ export interface AppPermissions {
   limpeza?:    boolean
   escala:      boolean
   oradores?:   boolean
+  oradoresS1?: boolean
   servicoCampo?: boolean
   individual?: boolean
 }
@@ -210,6 +212,7 @@ export interface RawRoot {
 
 export interface AppContext {
   overview?: { month:string; pending:boolean }
+  oradoresSection?: 's1' | 's2'
   uid:     string
   usuario: Usuario
 }

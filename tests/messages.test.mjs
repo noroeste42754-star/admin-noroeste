@@ -62,8 +62,8 @@ test('Tarefas por pessoa usa vínculo explícito, funções e somente datas futu
   const people={p:{name:'Ana',masterId:'m'},other:{name:'Ana',masterId:'outro'}}
   const meetings=[{date:'2026-10-04',type:'weekend',assignments:{presidente:'m',leitor:'p',mic1:'other'}},{date:'2026-09-01',type:'midweek',assignments:{entrada:'p'}},{date:'2026-10-04',type:'weekend_s1',assignments:{entrada:'p'}}]
   const msg=tasksPersonMessage('p',people,meetings,'2026-10-01')
-  assert.match(msg,/Olá, Ana!/);assert.match(msg,/🪑 Presidente/);assert.match(msg,/📖 Leitor/);assert.ok(!msg.includes('Microfone'));assert.ok(!msg.includes('Entrada'))
+  assert.match(msg,/Olá, Ana!/);assert.match(msg,/🪑 Presidente/);assert.match(msg,/📖 Leitor/);assert.ok(!msg.includes('Microfone'));assert.match(msg,/1ª seção/);assert.match(msg,/🚪 Entrada/)
   const day=tasksDayMessage('2026-10-04',people,meetings,'Grupo 2')
-  assert.match(day,/🪑 Presidente: Ana/);assert.match(day,/🧹 Limpeza: Grupo 2/);assert.ok(!day.includes('Entrada'))
+  assert.match(day,/🪑 Presidente: Ana/);assert.match(day,/🧹 Limpeza: Grupo 2/);assert.match(day,/🚪 Entrada: Ana/)
   assert.equal(tasksPersonMessage('p',people,meetings,'2027-01-01'),'')
 })

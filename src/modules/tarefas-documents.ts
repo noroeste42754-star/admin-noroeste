@@ -21,7 +21,7 @@ function assignmentName(value: unknown, people: Record<string, TaskPerson>): str
 
 export function taskPrintHtml(meetings: TaskMeeting[], congregation: string, people: Record<string, TaskPerson>, pageSize = meetings.length): string {
   const last = meetings[meetings.length - 1]
-  return paginateItems(meetings, pageSize).map((page, index, pages) => `<div class="tarefas-print-page"><header class="tarefas-print-header"><div><div class="tarefas-print-title">Escala de Tarefas</div><div class="tarefas-print-subtitle">${esc(congregation)}</div></div><div class="tarefas-print-period">${formatTaskDate(meetings[0]?.date)} - ${formatTaskDate(last?.date)}${pages.length > 1 ? ` · ${index + 1}/${pages.length}` : ''}</div></header><div class="tarefas-print-meetings">${page.map(meeting => { const roles = TASK_ROLES.filter(role => roleApplies(role, meeting)); return `<section class="tarefas-print-meeting"><h2>${formatTaskDate(meeting.date)} · ${meeting.type === 'midweek' ? 'Meio de semana' : 'Fim de semana'}</h2><table class="tarefas-print-table"><tbody>${roles.map(role => `<tr><th>${esc(TASK_ROLE_LABELS[role])}</th><td>${esc(assignmentName(assignmentForRole(meeting, role), people))}</td></tr>`).join('')}</tbody></table></section>` }).join('')}</div></div>`).join('')
+  return paginateItems(meetings, pageSize).map((page, index, pages) => `<div class="tarefas-print-page"><header class="tarefas-print-header"><div><div class="tarefas-print-title">Escala de Tarefas</div><div class="tarefas-print-subtitle">${esc(congregation)}</div></div><div class="tarefas-print-period">${formatTaskDate(meetings[0]?.date)} - ${formatTaskDate(last?.date)}${pages.length > 1 ? ` · ${index + 1}/${pages.length}` : ''}</div></header><div class="tarefas-print-meetings">${page.map(meeting => { const roles = TASK_ROLES.filter(role => roleApplies(role, meeting)); return `<section class="tarefas-print-meeting"><h2>${formatTaskDate(meeting.date)} · ${meeting.type === 'midweek' ? 'Meio de semana' : meeting.type === 'weekend_s1' ? 'Fim de semana · 1ª seção' : meeting.type === 'weekend_merged' ? 'Fim de semana · Reunião única' : 'Fim de semana · 2ª seção'}</h2><table class="tarefas-print-table"><tbody>${roles.map(role => `<tr><th>${esc(TASK_ROLE_LABELS[role])}</th><td>${esc(assignmentName(assignmentForRole(meeting, role), people))}</td></tr>`).join('')}</tbody></table></section>` }).join('')}</div></div>`).join('')
 }
 
 export interface PreparedTaskPrint {
@@ -74,7 +74,7 @@ export async function createTaskSchedulePdf(meetings: TaskMeeting[], congregatio
   const pdf = await PDFDocument.create()
   const regular = await pdf.embedFont(StandardFonts.Helvetica)
   const bold = await pdf.embedFont(StandardFonts.HelveticaBold)
-  const ordered = [...meetings].sort((a, b) => String(a.date ?? '').localeCompare(String(b.date ?? '')))
+  const ordered = [...meetings].sort((a, b) => String(a.date ?? '').localeCompare(String(b.date ?? '')) || Number(b.type==='weekend_s1')-Number(a.type==='weekend_s1'))
   const page = pdf.addPage(A4_PORTRAIT)
   const period = ordered.length ? `${formatTaskDate(ordered[0]?.date)} - ${formatTaskDate(ordered[ordered.length - 1]?.date)}` : 'Sem período'
   let y = drawPublicPdfHeader(page, bold, regular, { title:'Escala de Tarefas', congregation, period, margin:PDF_MARGIN, compact:true })
@@ -82,11 +82,12 @@ export async function createTaskSchedulePdf(meetings: TaskMeeting[], congregatio
     { title:'Áudio e Vídeo', roles:['operador1', 'operador2', 'mic1', 'mic2'] },
     { title:'Presidente, leitor e indicadores', roles:['presidente', 'leitor', 'entrada', 'auditorio'] },
   ]
-  const width = A4_PORTRAIT[0] - PDF_MARGIN * 2, dateWidth = 49, cellWidth = (width - dateWidth) / 4
+  const width = A4_PORTRAIT[0] - PDF_MARGIN * 2, dateWidth = 75, cellWidth = (width - dateWidth) / 4
+  const dateAndSection = (meeting:TaskMeeting):string => `${formatTaskDate(meeting.date).slice(0,5)} ${meeting.type==='midweek'?'M':meeting.type==='weekend_s1'?'S1':meeting.type==='weekend_merged'?'Única':'S2'}`
   const prepare = (size: number) => blocks.map(block => ({
     ...block,
     rows:ordered.map(meeting => {
-      const cells = [wrapTaskPdfText(bold, formatTaskDate(meeting.date).slice(0, 5), size, dateWidth - 8),
+      const cells = [wrapTaskPdfText(bold, dateAndSection(meeting), size, dateWidth - 8),
         ...block.roles.map(role => wrapTaskPdfText(regular, roleApplies(role, meeting) ? assignmentName(assignmentForRole(meeting, role), people) || 'A definir' : '-', size, cellWidth - 8))]
       return { cells, height:Math.max(...cells.map(cell => cell.length)) * (size + 1) + 3 }
     }),
@@ -98,13 +99,25 @@ export async function createTaskSchedulePdf(meetings: TaskMeeting[], congregatio
     effectiveFontSize = Math.max(6, effectiveFontSize - .25)
     prepared = prepare(effectiveFontSize)
   }
-  if (height() > y - PDF_MARGIN) throw new Error('Este período não cabe em uma folha A4 com nomes legíveis. Selecione um período menor.')
+  if (height() > y - PDF_MARGIN) {
+    if (ordered.length < 2) throw new Error('Uma reunião não cabe em uma folha A4 com nomes legíveis.')
+    const monthBreak = ordered.findIndex((meeting, index) => index > 0 && meeting.date?.slice(0, 7) !== ordered[0]?.date?.slice(0, 7))
+    const split = monthBreak > 0 && monthBreak < ordered.length ? monthBreak : Math.ceil(ordered.length / 2)
+    const first = await createTaskSchedulePdf(ordered.slice(0, split), congregation, people, preferredFontPt)
+    const second = await createTaskSchedulePdf(ordered.slice(split), congregation, people, preferredFontPt)
+    const joined = await PDFDocument.create()
+    for (const bytes of [first.bytes, second.bytes]) {
+      const source = await PDFDocument.load(bytes)
+      for (const copied of await joined.copyPages(source, source.getPageIndices())) joined.addPage(copied)
+    }
+    return { bytes:Uint8Array.from(await joined.save()), pages:first.pages + second.pages, effectiveFontSize:Math.min(first.effectiveFontSize, second.effectiveFontSize) }
+  }
   if (!ordered.length) page.drawText('Nenhuma reunião cadastrada.', { x:PDF_MARGIN, y, size:10, font:regular })
   for (const block of ordered.length ? prepared : []) {
     page.drawText(block.title, { x:PDF_MARGIN, y:y - 9, size:9, font:bold, color:PDF_INK })
     y -= 15
     page.drawRectangle({ x:PDF_MARGIN, y:y - 18, width, height:18, color:PDF_INK })
-    ;['Data', ...block.roles.map(role => TASK_ROLE_LABELS[role])].forEach((label, index) => {
+    ;['Data/Sessão', ...block.roles.map(role => TASK_ROLE_LABELS[role])].forEach((label, index) => {
       const x = PDF_MARGIN + (index ? dateWidth + (index - 1) * cellWidth : 0)
       page.drawText(label, { x:x + 4, y:y - 12, size:8, font:bold, color:rgb(1, 1, 1) })
     })

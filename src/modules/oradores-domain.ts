@@ -78,8 +78,8 @@ export function scheduleBaseForEdit(previous?:TalkSchedule):Partial<TalkSchedule
   return result
 }
 
-export function isDuplicateSchedule(item:TalkSchedule, date:string, kind:TalkKind, speakerId:string, congregationId:string):boolean {
-  if(item.data!==date || item.secao==='s1') return false
+export function isDuplicateSchedule(item:TalkSchedule, date:string, kind:TalkKind, speakerId:string, congregationId:string, section:SpeakerSection='s2'):boolean {
+  if(item.data!==date || (item.secao??'s2')!==section) return false
   if(kind==='saida_orador') return item.tipo===kind && item.oradorId===speakerId && scheduleCongregationId(item)===congregationId
   return item.tipo!=='saida_orador'
 }
@@ -90,6 +90,12 @@ export function speakerLinkOptions(people:Record<string,{name?:string;active?:bo
   return options.sort((a,b)=>a.label.localeCompare(b.label,'pt-BR'))
 }
 export interface SpeakerEvent { data:string; titulo:string; descricao?:string; tipo:SpeakerEventKind; impactoTarefas?:{ bloqueiaReuniao?:boolean; tiposReuniao?:string[] } }
+
+export function scheduleSpeakerNames(item:TalkSchedule,speakers:Record<string,Speaker>):string {
+  const primary=speakers[item.oradorId??'']?.nome?.trim()||item.oradorNome?.trim()||'A definir'
+  const secondary=speakers[item.oradorSecundarioId??'']?.nome?.trim()||item.oradorSecundarioNome?.trim()
+  return secondary&&secondary!==primary?`${primary} / ${secondary}`:primary
+}
 
 export interface SpeakersRoot {
   oradores?: Record<string, Speaker>
@@ -144,7 +150,7 @@ export function normalizeSpeakersRoot(value: unknown): SpeakersRoot {
   return { oradores:speakers, temas:themes, congregacoes:congregations, programacao:schedule, historicoTemas:history }
 }
 
-// Keep legacy records in storage; the single-section app operates on S2 only.
+// Legacy compatibility for callers that explicitly request only S2.
 export function selectSecondSection(root: SpeakersRoot): SpeakersRoot {
   return {
     ...root,
@@ -180,13 +186,13 @@ export function speakerPendingItems(root: SpeakersRoot, today = fortalezaToday()
   const limit = new Date(`${today}T12:00:00Z`); limit.setUTCDate(limit.getUTCDate()+90); const horizon=limit.toISOString().slice(0,10)
   const items:SpeakerPendingItem[]=[]
   for (const [id,item] of Object.entries(root.programacao ?? {})) {
-    if(item.secao==='s1'||item.data<today||item.data>horizon)continue
+    if(item.data<today||item.data>horizon)continue
     const missing:{label:string;action:SpeakerPendingItem['action']}[]=[]
     if(!item.oradorId&&!item.oradorNome)missing.push({label:'Sem orador',action:'oradorId'})
     if(!item.temaId&&!item.temaTitulo)missing.push({label:'Sem tema',action:'themeNumber'})
     if(item.tipo!=='discurso_local'&&!scheduleCongregationId(item)&&!scheduleCongregationName(item))missing.push({label:'Sem congregação',action:'congregacaoId'})
     const name=root.oradores?.[item.oradorId??'']?.nome || item.oradorNome || 'Orador a definir'
-    const detail=`${formatSpeakerDate(item.data)} · ${TALK_KIND_LABEL[item.tipo]} · ${name}`
+    const detail=`${formatSpeakerDate(item.data)} · ${item.secao==='s1'?'1ª seção':'2ª seção'} · ${TALK_KIND_LABEL[item.tipo]} · ${name}`
     const base={id:`schedule-${id}`,screen:'programacao' as const,recordId:id,date:item.data,detail}
     if(missing.length)items.push({...base,severity:missing[0]!.action==='oradorId'?'alta':'media',title:missing.map(x=>x.label).join(' · '),action:missing[0]!.action})
     else if(scheduleStatus(item)==='por_confirmar')items.push({...base,severity:'media',title:'Aguardando confirmação',action:'confirm'})

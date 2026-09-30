@@ -35,10 +35,11 @@ test('responsáveis de TPL e Tarefas podem salvar as preferências do próprio m
   assert.equal(canAccessData('tarefas/planning/engineRules', apps({ escala:true }), true), false)
 })
 
-test('Oradores altera somente discursos e eventos e lê os cadastros necessários', () => {
+test('Oradores altera discursos e eventos gerais e consulta os cadastros necessários', () => {
   const speakers = apps({ oradores:true })
   assert.equal(canAccessData('tarefas/discursos', speakers, true), true)
   assert.equal(canAccessData('tarefas/events', speakers, true), true)
+  assert.equal(canAccessData('tarefas/events', speakers, false), true)
   assert.equal(canAccessData('tarefas/planning', speakers, false), true)
   assert.equal(canAccessData('tarefas/people', speakers, false), true)
   assert.equal(canAccessData('tarefas/scale/periods', speakers, false), true)

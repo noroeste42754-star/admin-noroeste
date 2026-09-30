@@ -18,9 +18,10 @@ export function canAccessData(path: string, apps: AppPermissions, write: boolean
   if (root === 'master') return !write && (second === 'pessoas' || second === 'config')
   if (root === 'usuarios') return false
   if (root === 'tarefas') {
-    if (second === 'discursos' || second === 'events') return apps.oradores === true || (!write && apps.tarefas === true)
-    if (second === 'planning' || second === 'people') return apps.tarefas === true || (!write && (apps.oradores === true || apps.limpeza === true))
-    if (!write && apps.oradores === true && second === 'scale' && third === 'periods') return true
+    if (second === 'events') return apps.oradores === true || apps.oradoresS1 === true || (!write && apps.tarefas === true)
+    if (second === 'discursos') return apps.oradores === true || apps.oradoresS1 === true || (!write && apps.tarefas === true)
+    if (second === 'planning' || second === 'people') return apps.tarefas === true || (!write && (apps.oradores === true || apps.oradoresS1 === true || apps.limpeza === true))
+    if (!write && (apps.oradores === true || apps.oradoresS1 === true) && second === 'scale' && third === 'periods') return true
     if (apps.tarefas === true) return true
     return !write && apps.limpeza === true && second === 'planning'
   }
@@ -33,12 +34,13 @@ export function canAccessData(path: string, apps: AppPermissions, write: boolean
       const messagePermissions: Record<string, keyof AppPermissions> = {
         tarefas:'tarefas', limpeza:'limpeza', escala:'escala',
         oradores:'oradores',
+        oradoresS1:'oradoresS1',
         servicoCampo:'servicoCampo',
       }
       const permission = fourth ? messagePermissions[fourth] : undefined
       return third === 'moduleWhatsApp' && Boolean(permission && apps[permission])
     }
-    if (second === 'documentos') return !write || Boolean(apps.tarefas || apps.oradores || apps.limpeza || apps.escala || apps.servicoCampo)
+    if (second === 'documentos') return !write || Boolean(apps.tarefas || apps.oradores || apps.oradoresS1 || apps.limpeza || apps.escala || apps.servicoCampo)
   }
   return false
 }
@@ -63,7 +65,7 @@ export function canMutateData(path: string, method: string, value: unknown, apps
     if (method !== 'PATCH' || !value || typeof value !== 'object' || Array.isArray(value)) return false
     return Object.keys(value as Record<string, unknown>).every(key => {
       const area = key.split('/')[0]
-      return area === 'discursos' || area === 'events' ? apps.oradores === true : apps.tarefas === true
+      return area === 'discursos' || area === 'events' ? apps.oradores === true || apps.oradoresS1 === true : apps.tarefas === true
     })
   }
   if (apps.mestre) return true
@@ -73,7 +75,7 @@ export function canMutateData(path: string, method: string, value: unknown, apps
   return Object.entries(value as Record<string, unknown>).every(([id, item]) => {
     const module = documentModule(id, item)
     const permission = DOCUMENT_PERMISSIONS[module]
-    if (!permission || apps[permission] !== true) return false
+    if (!permission || (apps[permission] !== true && !(module === 'oradores' && apps.oradoresS1 === true))) return false
     if (item === null) return id.startsWith(`modulo-${module}-`)
     const record = item as Record<string, unknown>
     return id.startsWith(`modulo-${module}-`) && record['tipo'] === 'modulo'

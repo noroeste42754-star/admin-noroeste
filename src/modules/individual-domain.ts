@@ -141,7 +141,7 @@ function speakerAgendaEvents(root: Row): { event: AgendaEvent; masterIds: string
   const tasks = rows(root['tarefas']), talks = rows(tasks['discursos']), speakers = rows(talks['oradores'])
   return Object.entries(rows(talks['programacao'])).flatMap(([id, raw]) => {
     const item = rows(raw)
-    if (item['secao'] === 's1' || (item['status'] !== 'confirmado' && rows(item['confirmacao'])['status'] !== true)) return []
+    if (item['status'] !== 'confirmado' && rows(item['confirmacao'])['status'] !== true) return []
     const date = text(item['data'])
     if (!validAgendaDate(date)) return []
     const ids = [text(item['oradorId']), text(item['oradorSecundarioId'])]
@@ -160,12 +160,12 @@ function speakerAgendaEvents(root: Row): { event: AgendaEvent; masterIds: string
     const title = text(theme['titulo']) || text(item['temaTitulo'])
     const outgoing = item['tipo'] === 'saida_orador'
     const congregations=rows(talks['congregacoes']), localId=text(item['localCongregacaoId'])
-    const locals=Object.values(congregations).map(rows).filter(c=>c['tipo']==='local'&&c['secao']!=='s1')
-    const congregation = outgoing ? rows(congregations[text(item['congregacaoDestinoId'])]) : localId ? rows(congregations[localId]) : locals.find(c=>c['secao']==='s2') ?? locals[0] ?? {}
+    const locals=Object.values(congregations).map(rows).filter(c=>c['tipo']==='local')
+    const congregation = outgoing ? rows(congregations[text(item['congregacaoDestinoId'])]) : localId ? rows(congregations[localId]) : locals.find(c=>c['secao']===(item['secao']??'s2')) ?? locals[0] ?? {}
     const time=text(item['horarioLocal']) || text(congregation['horario']) || undefined
     if(!validAgendaTime(time))return []
     const location = cleanAddress(text(congregation['localizacao'])) || text(item[outgoing ? 'congregacaoDestinoNome' : 'localCongregacaoNome']) || text(congregation['nome'])
-    const event: AgendaEvent = { id:`oradores:${id}`, source:'oradores', date, ...(time ? { time } : {}), title:outgoing ? 'Saída de orador' : 'Discurso público', detail:[outgoing ? 'Discurso em outra congregação' : 'Reunião do fim de semana', title].filter(Boolean).join(' · '), ...(location ? { location } : {}), ...(text(congregation['mapa']) ? {mapLocation:text(congregation['mapa'])} : {}), status:'futuro' }
+    const event: AgendaEvent = { id:`oradores:${id}`, source:'oradores', date, ...(time ? { time } : {}), title:outgoing ? 'Saída de orador' : 'Discurso público', detail:[outgoing ? 'Discurso em outra congregação' : `Reunião do fim de semana · ${item['secao']==='s1'?'1ª seção':'2ª seção'}`, title].filter(Boolean).join(' · '), ...(location ? { location } : {}), ...(text(congregation['mapa']) ? {mapLocation:text(congregation['mapa'])} : {}), status:'futuro' }
     return [{ event, masterIds, names }]
   })
 }

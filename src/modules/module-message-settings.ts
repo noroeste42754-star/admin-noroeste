@@ -2,7 +2,7 @@ import { SPEAKER_TEMPLATE, TASK_TEMPLATE, resolveMessageTemplate } from './messa
 import { editorBusy, editorSaved, editorError } from '../ui/editor-feedback'
 import { agendaConfigRef, child, get, set } from '../firebase'
 
-export type MessageSettingsModule = 'tarefas' | 'oradores'
+export type MessageSettingsModule = 'tarefas' | 'oradores' | 'oradoresS1'
 
 export interface ModuleMessageSettings {
   meetingText?: string
@@ -11,11 +11,13 @@ export interface ModuleMessageSettings {
 const MODULE_LABELS: Record<MessageSettingsModule, string> = {
   tarefas:'Tarefas',
   oradores:'Oradores',
+  oradoresS1:'Oradores · 1ª seção',
 }
 
 const MEETING_DEFAULTS: Record<MessageSettingsModule, string> = {
   tarefas:TASK_TEMPLATE,
   oradores:SPEAKER_TEMPLATE,
+  oradoresS1:SPEAKER_TEMPLATE,
 }
 
 function esc(value: unknown): string {
@@ -46,7 +48,7 @@ export async function mountModuleMessageSettings(
     return
   }
 
-  if(module==='oradores'||module==='tarefas')current.meetingText=resolveMessageTemplate(module,current.meetingText)
+  current.meetingText=resolveMessageTemplate(module==='oradoresS1'?'oradores':module,current.meetingText)
   if (!document.getElementById(containerId)) return
   const prefix = `moduleMessage_${module}`
   container.innerHTML = `

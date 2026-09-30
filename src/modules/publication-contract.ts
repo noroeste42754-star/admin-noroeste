@@ -3,7 +3,7 @@ import { assignmentId, assignmentForRole, canonicalMeetingType, TASK_ROLES, role
 import { hasScaleAssignments, printRowsForLocal } from './escala-output.ts'
 import { localSlots } from './escala-domain.ts'
 import { canonicalSpeaker } from './oradores-editor-domain.ts'
-import { normalizeSpeakersRoot, selectSecondSection } from './oradores-domain.ts'
+import { normalizeSpeakersRoot } from './oradores-domain.ts'
 import { publicationSource as speakerPublicationSource } from './oradores-publication.ts'
 import { fieldServiceConflicts } from './servico-campo-domain.ts'
 import type { PublicPdfModule } from './agenda-documents-domain.ts'
@@ -39,7 +39,7 @@ export function publicationInput(root:PublicationRoot,module:PublicPdfModule,id:
     const c=resolveCentralPerson(key,p.masterId,people)
     return [key,{...p,masterId:c.masterId,name:c.name||p.name,active:c.active&&p.active!==false}]
   })),exclusions:root.escala?.monthExclusions?.[id]??[]}
-  const talks=selectSecondSection(normalizeSpeakersRoot(root.tarefas?.discursos??{}))
+  const talks=normalizeSpeakersRoot(root.tarefas?.discursos??{})
   return {month:id,schedule:Object.values(talks.programacao??{}),speakers:Object.fromEntries(Object.entries(talks.oradores??{}).map(([key,p])=>[key,canonicalSpeaker(p,people,root.tarefas?.people??{})])),themes:talks.temas??{},congregations:talks.congregacoes??{}}
 }
 export function publicationIssues(root:PublicationRoot,module:PublicPdfModule,id:string):string[] {

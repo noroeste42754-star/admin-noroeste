@@ -19,7 +19,7 @@ export function canManageStoragePath(path: string, apps: AppPermissions): boolea
   if (/^agenda\/documentos\/admin\/[A-Za-z0-9._-]+\.pdf$/.test(path)) return apps.mestre === true
   const match = path.match(/^agenda\/documentos\/modulos\/([^/]+)\//)
   const permission = match ? MODULES[match[1] ?? ''] : undefined
-  return Boolean(permission && (apps.mestre || apps[permission] === true))
+  return Boolean(permission && (apps.mestre || apps[permission] === true || (permission === 'oradores' && apps.oradoresS1 === true)))
 }
 
 export function canReadPublicStoragePath(path: string): boolean {

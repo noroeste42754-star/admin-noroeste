@@ -73,7 +73,7 @@ export async function congregationGeocodeResponse(
 ): Promise<Response> {
   if (request.method !== 'POST') return json(405, { error:'Método não permitido.' })
   const session: AppSession | null = await resolveSession(request)
-  if (!session || !(session.usuario.apps.oradores || session.usuario.apps.mestre)) return json(403, { error:'Acesso não autorizado.' })
+  if (!session || !(session.usuario.apps.oradores || session.usuario.apps.oradoresS1 || session.usuario.apps.mestre)) return json(403, { error:'Acesso não autorizado.' })
   if (!validCsrf(request, session)) return json(403, { error:'Sessão inválida.' })
   const body = await objectBody(request)
   const address = typeof body['address'] === 'string' ? body['address'].trim() : ''

@@ -3,7 +3,8 @@ import { contextualMessage } from './message-domain.ts'
 const EMOJI={presidente:'🪑',operador1:'🎛️',operador2:'🎛️',leitor:'📖',entrada:'🚪',auditorio:'🏛️',mic1:'🎤',mic2:'🎤'}
 function heading(meeting:TaskMeeting):string {
   const [year,month,day]=(meeting.date??'').split('-')
-  return `📅 *${day}/${month}/${year}* — Reunião de ${canonicalMeetingType(meeting.type)==='midweek'?'meio de semana':'fim de semana'}`
+  const type=canonicalMeetingType(meeting.type)
+  return `📅 *${day}/${month}/${year}* — Reunião de ${type==='midweek'?'meio de semana':type==='weekend_s1'?'fim de semana · 1ª seção':'fim de semana · 2ª seção'}`
 }
 // Resolve only explicit IDs, including canonical master IDs; never match names.
 function taskRecipientIds(id:string,people:Record<string,TaskPerson>):Set<string> {

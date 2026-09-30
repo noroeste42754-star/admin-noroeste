@@ -11,14 +11,14 @@ export function messageAddress(value=''):string {
 
 export function speakerAssignmentMessage(item:TalkSchedule,root:SpeakersRoot,second=false,localTime=''):string {
   const congregations=root.congregacoes??{},theme=root.temas?.[item.temaId??'']
-  const local=congregations[item.localCongregacaoId??'']??Object.values(congregations).find(c=>c.tipo==='local'&&c.secao!=='s1')
+  const local=congregations[item.localCongregacaoId??'']??Object.values(congregations).find(c=>c.tipo==='local'&&(c.secao??'s2')===(item.secao??'s2'))
   const destination=item.tipo==='saida_orador'?congregations[scheduleCongregationId(item)]:local
   const name=destination?.nome || (item.tipo==='saida_orador'?scheduleCongregationName(item):item.localCongregacaoNome) || 'A definir'
   const date=new Intl.DateTimeFormat('pt-BR',{weekday:'long',day:'2-digit',month:'2-digit',year:'numeric',timeZone:'UTC'}).format(new Date(`${item.data}T12:00:00Z`))
   const number=theme?.numero??item.temaNumero,title=theme?.titulo||item.temaTitulo||'A definir'
   const time=item.tipo==='saida_orador'?destination?.horario:item.horarioLocal||localTime||destination?.horario
   const meeting=[destination?.diaReuniao,time].filter(Boolean).join(', ')
-  if(item.tipo!=='saida_orador')return [messageDate(item.data,time),second?'🎙️ *Segundo orador*':'🎙️ *Discurso local*',themeLine(item,root)].join('\n')
+  if(item.tipo!=='saida_orador')return [messageDate(item.data,time),`🏛️ ${item.secao==='s1'?'1ª seção':'2ª seção'}`,second?'🎙️ *Segundo orador*':'🎙️ *Discurso local*',themeLine(item,root)].join('\n')
   return [`📅 *${date}*`,second?'🎙️ *Segundo orador*':'🚗 *Saída para discurso*',
     `📖 *Tema${number?' '+number:''}:* ${title}`,`🏛️ Congregação: ${name}`,
     destination?.cidade?`📍 Cidade: ${destination.cidade}`:'',meeting?`🕒 Reunião: ${meeting}`:'',
@@ -27,20 +27,21 @@ export function speakerAssignmentMessage(item:TalkSchedule,root:SpeakersRoot,sec
 }
 
 function localCongregation(root:SpeakersRoot,item?:TalkSchedule) {
-  return root.congregacoes?.[item?.localCongregacaoId??'']??Object.values(root.congregacoes??{}).find(c=>c.tipo==='local'&&c.secao!=='s1')
+  return root.congregacoes?.[item?.localCongregacaoId??'']??Object.values(root.congregacoes??{}).find(c=>c.tipo==='local'&&(c.secao??'s2')===(item?.secao??'s2'))
 }
 function themeLine(item:TalkSchedule,root:SpeakersRoot):string {
   const theme=root.temas?.[item.temaId??''],number=theme?.numero??item.temaNumero,title=theme?.titulo||item.temaTitulo||'A definir'
   return number?`📖 *Tema ${number}:* ${title}`:`📖 Tema: ${title}`
 }
 export function assignmentEntries(root:SpeakersRoot,id:string,today:string,localTime=''):{date:string;text:string;talk:boolean}[] {
-  const rows=Object.values(root.programacao??{}).filter(item=>item.secao!=='s1'&&item.data>=today)
+  const rows=Object.values(root.programacao??{}).filter(item=>item.data>=today)
   const entries=rows.filter(item=>item.oradorId===id||item.oradorSecundarioId===id).map(item=>({date:item.data,text:speakerAssignmentMessage(item,root,item.oradorSecundarioId===id&&item.oradorId!==id,localTime),talk:true}))
-  const eligible=Object.entries(root.oradores??{}).filter(([,speaker])=>speaker.ativo&&speaker.tipo==='local'&&speaker.secao!=='s1')
+  const selectedSection=root.oradores?.[id]?.secao??'s2'
+  const eligible=Object.entries(root.oradores??{}).filter(([,speaker])=>speaker.ativo&&speaker.tipo==='local'&&(speaker.secao??'s2')===selectedSection)
   const leaders=eligible.filter(([,s])=>s.sentinelaDirigente),substitutes=eligible.filter(([,s])=>s.sentinelaSubstituto)
   if(leaders.length===1&&substitutes.length===1&&substitutes[0]![0]===id&&leaders[0]![0]!==id){
     const leader=leaders[0]![0],seen=new Set<string>()
-    rows.filter(item=>item.tipo==='discurso_local'&&(item.oradorId===leader||item.oradorSecundarioId===leader)).forEach(item=>{
+    rows.filter(item=>item.tipo==='discurso_local'&&(item.secao??'s2')===selectedSection&&(item.oradorId===leader||item.oradorSecundarioId===leader)).forEach(item=>{
       if(seen.has(item.data))return
       seen.add(item.data)
       entries.push({date:item.data,text:`${messageDate(item.data,item.horarioLocal||localTime||localCongregation(root,item)?.horario)}\n🔔 Substituição do estudo de 'A Sentinela'`,talk:false})
@@ -58,20 +59,20 @@ export function confirmationMessage(item:TalkSchedule,root:SpeakersRoot,template
   const destination=item.tipo==='saida_orador'?root.congregacoes?.[scheduleCongregationId(item)]:localCongregation(root,item)
   const time=item.tipo==='saida_orador'?destination?.horario:item.horarioLocal||localTime||destination?.horario
   const address=messageAddress(destination?.localizacao)
-  const details=[messageDate(item.data,time),themeLine(item,root),address?`📍 Endereço: ${address}`:''].filter(Boolean).join('\n')
+  const details=[messageDate(item.data,time),item.tipo==='saida_orador'?'':`🏛️ ${item.secao==='s1'?'1ª seção':'2ª seção'}`,themeLine(item,root),address?`📍 Endereço: ${address}`:''].filter(Boolean).join('\n')
   return contextualMessage('oradores',template,`Olá, ${name}! Confirmando seu discurso:\n\n${details}\n\nPode confirmar?`,`${details}\n\nPode confirmar?`,name)
 }
-export function exchangesMessage(root:SpeakersRoot,id:string,today:string,template?:string,localTime='',confirmedOnly=false):string {
+export function exchangesMessage(root:SpeakersRoot,id:string,today:string,template?:string,localTime='',confirmedOnly=false,section:'s1'|'s2'='s2'):string {
   const congregation=root.congregacoes?.[id],name=congregation?.contato||''
-  const rows=Object.values(root.programacao??{}).filter(item=>item.secao!=='s1'&&item.data>=today&&item.tipo!=='discurso_local'&&scheduleCongregationId(item)===id&&(!confirmedOnly||item.status==='confirmado')).sort((a,b)=>a.data.localeCompare(b.data))
+  const rows=Object.values(root.programacao??{}).filter(item=>(item.secao??'s2')===section&&item.data>=today&&item.tipo!=='discurso_local'&&scheduleCongregationId(item)===id&&(!confirmedOnly||item.status==='confirmado')).sort((a,b)=>a.data.localeCompare(b.data))
   const groups=[['discurso_visitante','🎙️ *Convites*'],['saida_orador','🚗 *Saídas*']].map(([kind,label])=>{
     const matches=rows.filter(item=>item.tipo===kind)
     return matches.length?`${label}\n\n${matches.map(item=>[messageDate(item.data,kind==='saida_orador'?congregation?.horario:item.horarioLocal||localTime||localCongregation(root,item)?.horario),`👤 ${root.oradores?.[item.oradorId??'']?.nome||item.oradorNome||'A definir'}`,themeLine(item,root)].join('\n')).join('\n\n')}`:''
   }).filter(Boolean).join('\n\n')
   return contextualMessage('oradores',template,`Olá${name?', '+name:''}! Segue nosso intercâmbio com a ${congregation?.nome||'congregação'}:\n\n${groups}`,groups,name||'irmãos')
 }
-export function availableMessage(root:SpeakersRoot,id:string,dates:string[],localTime='',template?:string):string {
-  const destination=root.congregacoes?.[id],local=localCongregation(root),address=messageAddress(local?.localizacao),name=destination?.contato||''
+export function availableMessage(root:SpeakersRoot,id:string,dates:string[],localTime='',template?:string,section:'s1'|'s2'='s2'):string {
+  const destination=root.congregacoes?.[id],local=localCongregation(root,{secao:section} as TalkSchedule),address=messageAddress(local?.localizacao),name=destination?.contato||''
   const details=[dates.map(date=>messageDate(date,localTime||local?.horario)).join('\n'),address?`📍 Endereço: ${address}`:''].filter(Boolean).join('\n\n')
   return contextualMessage('oradores',template,`Olá${name?', '+name:''}! Temos estas datas disponíveis na ${local?.nome||'nossa congregação'}:\n\n${details}`,details,name||'irmãos')
 }

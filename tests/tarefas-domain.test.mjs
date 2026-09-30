@@ -43,7 +43,7 @@ test('Oradores bloqueia entrada por vínculo, segundo orador e identidade centra
   delete context.discursos.programacao.d1.secao
   assert.equal(eligibility('p1','entrada',meeting,{},context).reason,'Discurso na mesma data')
   context.discursos.programacao.d1.secao='s1'
-  assert.equal(eligibility('p1','entrada',meeting,{},context).eligible,true)
+  assert.equal(eligibility('p1','entrada',meeting,{},context).reason,'Pessoa designada na outra sessão neste dia')
 })
 
 test('geração exclui orador S2 e respeita checkbox desativado', () => {
@@ -79,6 +79,13 @@ test('registro especial continua uma única reunião de fim de semana sem Leitor
   const meeting = { date: '2026-09-12', type: 'weekend_merged' }
   assert.equal(roleApplies('presidente', meeting), true)
   assert.equal(roleApplies('leitor', meeting), false)
+  const context=baseContext({p1:basePerson({weekendSection:'s1'}),p2:basePerson({weekendSection:'s2'})},meeting)
+  assert.equal(eligibility('p1','entrada',meeting,{},context).eligible,true)
+  assert.equal(eligibility('p2','entrada',meeting,{},context).eligible,true)
+  const canonical=withCanonicalPeriod(context.periods,{periodMode:'month',enableSection1:true,meetingDays:{midweekDow:3,weekendDow:6,weekendS1Dow:6}},meeting.date)
+  const sameDay=Object.values(canonical.periods['2026-09'].meetings).filter(item=>item.date===meeting.date)
+  assert.equal(sameDay.length,1)
+  assert.equal(sameDay[0].type,'weekend_merged')
 })
 
 test('função-base precisa estar explicitamente habilitada', () => {
@@ -225,10 +232,20 @@ test('modo mensal limita as reuniões ao mês selecionado e mantém um fim de se
   assert.equal(new Set(weekends.map(meeting => meeting.date)).size, weekends.length)
 })
 
-test('preserva a antiga S2 como reunião única e ignora a antiga S1', () => {
+test('reconhece as duas seções como reuniões distintas', () => {
   assert.equal(canonicalMeetingType('weekend'), 'weekend')
   assert.equal(canonicalMeetingType('weekend_s2'), 'weekend')
-  assert.equal(canonicalMeetingType('weekend_s1'), null)
+  assert.equal(canonicalMeetingType('weekend_s1'), 'weekend_s1')
+  const result=withCanonicalPeriod({}, {periodMode:'month',enableSection1:true,meetingDays:{midweekDow:3,weekendDow:6,weekendS1Dow:6}}, '2026-09-01')
+  const saturday=Object.values(result.periods['2026-09'].meetings).filter(item=>item.date==='2026-09-12')
+  assert.deepEqual(new Set(saturday.map(item=>item.type)),new Set(['weekend','weekend_s1']))
+})
+
+test('Master ID impede a mesma pessoa nas duas seções mesmo com conflito opcional desligado', () => {
+  const s1={date:'2026-09-12',type:'weekend_s1',assignments:{entrada:'p1'}}
+  const s2={date:'2026-09-12',type:'weekend',assignments:{}}
+  const context={people:{p1:basePerson({masterId:'m'}),p2:basePerson({masterId:'m'})},periods:{'2026-09':{meetings:{s1,s2}}},events:{},engineRules:{evitarConflitosOradores:false}}
+  assert.equal(eligibility('p2','entrada',s2,{},context).reason,'Pessoa designada na outra sessão neste dia')
 })
 
 test('período travado bloqueia geração, mas escolha manual fora das regras é preservada', () => {

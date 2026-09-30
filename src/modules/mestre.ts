@@ -1059,7 +1059,7 @@ function openUsuarioModal(uid: string | null): void {
   const u    = uid ? usuarios[uid] : undefined
   const identityLocked = Boolean(u?.masterId && pessoas[u.masterId])
   const apps = u?.apps ?? {
-    mestre:false, tarefas:false, oradores:false, limpeza:false, escala:false,
+    mestre:false, tarefas:false, oradores:false, oradoresS1:false, limpeza:false, escala:false,
     servicoCampo:false,
   }
   const overlay = document.createElement('div')
@@ -1092,7 +1092,8 @@ function openUsuarioModal(uid: string | null): void {
         <span class="form-label" style="display:block;margin-bottom:6px">Módulos</span>
         <div id="uAdminPermission">${appCheck('mestre', 'Admin', apps.mestre)}</div>
         ${appCheck('tarefas',     'Tarefas',      apps.tarefas)}
-        ${appCheck('oradores',    'Oradores',     apps.oradores ?? false)}
+        ${appCheck('oradoresS1',  'Oradores · 1ª seção', apps.oradoresS1 ?? false)}
+        ${appCheck('oradores',    'Oradores · 2ª seção', apps.oradores ?? false)}
         ${appCheck('limpeza',     'Limpeza',      apps.limpeza ?? false)}
         ${appCheck('escala',      'Escala TPL',   apps.escala)}
         ${appCheck('servicoCampo','Serviço de Campo', apps.servicoCampo ?? false)}
@@ -1125,7 +1126,7 @@ async function saveUsuario(uid: string | null, overlay: HTMLElement): Promise<vo
     (document.getElementById(`uApp_${id}`) as HTMLInputElement).checked
 
   const selectedApps = {
-    mestre: checkApp('mestre'), tarefas: checkApp('tarefas'), oradores:checkApp('oradores'), limpeza: checkApp('limpeza'),
+    mestre: checkApp('mestre'), tarefas: checkApp('tarefas'), oradoresS1:checkApp('oradoresS1'), oradores:checkApp('oradores'), limpeza: checkApp('limpeza'),
     escala: checkApp('escala'),
     servicoCampo:checkApp('servicoCampo'), individual:true,
   }

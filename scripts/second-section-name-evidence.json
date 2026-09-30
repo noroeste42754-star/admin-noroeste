@@ -1,0 +1,26 @@
+{
+  "sources": {
+    "bss": {
+      "file": "ServiceSecretary.bss",
+      "sha256": "ef766f3ca9e6292533949e72e02a8bbdc61b1a5cbe68358d2895c23c5612da52"
+    },
+    "legacy": {
+      "file": "oradoress2-default-rtdb-export.json",
+      "sha256": "a55266d3e9105eb8c99f3317401089f19aeedac5774630261c72b5978204decd"
+    }
+  },
+  "verified": [
+    {
+      "publisherId": 147,
+      "masterId": "m_2e30b9f5",
+      "shortName": "Severina Silva",
+      "disabled": true
+    },
+    {
+      "publisherId": 157,
+      "masterId": "m_41d6536a",
+      "shortName": "Elbetty Carvalho",
+      "disabled": false
+    }
+  ]
+}

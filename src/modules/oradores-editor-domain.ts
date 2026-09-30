@@ -47,7 +47,7 @@ export function speakerConflicts(speakerId:string,date:string,root:SpeakersRoot,
   const master=resolveSpeakerMasterId(speaker,people,tasks)
   const samePerson=(id:string)=>id===speakerId || Boolean(master && root.oradores?.[id] && resolveSpeakerMasterId(root.oradores[id]!,people,tasks)===master)
   const reasons:string[]=[]
-  if (Object.entries(root.programacao??{}).some(([id,item])=>id!==excludedSchedule && item.secao!=='s1' && item.data===date && [item.oradorId,item.oradorSecundarioId].some(id=>id && samePerson(id)))) reasons.push('Outro discurso ou saída nesta data')
+  if (Object.entries(root.programacao??{}).some(([id,item])=>id!==excludedSchedule && item.data===date && [item.oradorId,item.oradorSecundarioId].some(id=>id && samePerson(id)))) reasons.push('Outro discurso ou saída nesta data')
   const taskIds=Object.entries(tasks).filter(([id,p])=>master ? p.masterId===master || id===master : id===speaker.pessoaId).map(([id])=>id)
   if (taskIds.some(id=>{const dates=tasks[id]?.unavailableDates; return Array.isArray(dates)?dates.includes(date):dates?.[date]===true})) reasons.push('Indisponível nesta data em Tarefas')
   for (const period of Object.values(periods)) {

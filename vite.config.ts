@@ -8,7 +8,7 @@ export default defineConfig({
     sourcemap: false,
     rollupOptions: {
       input: ['index.html', 'agenda/index.html',
-        'modulos/mestre/index.html', 'modulos/tarefas/index.html', 'modulos/oradores/index.html',
+        'modulos/mestre/index.html', 'modulos/tarefas/index.html', 'modulos/oradores/index.html', 'modulos/oradoresS1/index.html',
         'modulos/limpeza/index.html', 'modulos/escala/index.html', 'modulos/servicoCampo/index.html'],
       output: {
         manualChunks(id) {

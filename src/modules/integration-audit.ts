@@ -10,7 +10,7 @@ export async function auditIntegrations(root:PublicationRoot,today=fortalezaToda
   for(const [module,records] of profiles) {
     const seen=new Map<string,string>()
     for(const [id,p] of Object.entries(records)) {
-      if(module==='oradores'&&(p.tipo!=='local'||p.secao==='s1'))continue
+      if(module==='oradores'&&p.tipo!=='local')continue
       const mid=module==='oradores'?resolveSpeakerMasterId(p,people,tasks):resolveCentralPerson(id,p.masterId,people).masterId
       if(!mid||!people[mid])issues.push({module,id,kind:'vinculo',detail:'Vínculo central ausente ou inexistente.'})
       else {

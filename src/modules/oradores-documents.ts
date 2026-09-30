@@ -1,7 +1,7 @@
 import { PDFDocument, StandardFonts, rgb, type PDFFont, type PDFPage } from 'pdf-lib/cjs/index.js'
 import { downloadPdf } from '../ui/pdf-download.ts'
 import { A4_LANDSCAPE, PDF_INK, PDF_LINE, PDF_MUTED, drawPublicPdfHeader } from '../ui/public-pdf-layout.ts'
-import { monthBounds, scheduleCongregationId, scheduleCongregationName, type Speaker, type SpeakerCongregation, type TalkSchedule, type TalkTheme } from './oradores-domain.ts'
+import { monthBounds, scheduleCongregationId, scheduleCongregationName, scheduleSpeakerNames, type Speaker, type SpeakerCongregation, type TalkSchedule, type TalkTheme } from './oradores-domain.ts'
 
 interface Input {
   month: string
@@ -13,7 +13,7 @@ interface Input {
 
 const monthLabel = (month:string): string => new Intl.DateTimeFormat('pt-BR', { month:'long', year:'numeric', timeZone:'UTC' }).format(new Date(`${month}-15T12:00:00Z`))
 const pdfDate = (date:string): string => /^\d{4}-\d{2}-\d{2}$/.test(date) ? `${date.slice(8,10)}/${date.slice(5,7)}` : date
-const speakerName = (item:TalkSchedule, speakers:Record<string,Speaker>): string => speakers[item.oradorId??'']?.nome?.trim() || item.oradorNome?.trim() || 'A definir'
+const speakerName = scheduleSpeakerNames
 const congregationName = (item:TalkSchedule, congregations:Record<string,SpeakerCongregation>): string => congregations[scheduleCongregationId(item)]?.nome ?? scheduleCongregationName(item) ?? '-'
 
 function wrap(font:PDFFont, value:string, size:number, maxWidth:number):string[]{ const words=value.trim().split(/\s+/).filter(Boolean); if(!words.length)return['']; const lines:string[]=[]; let current=''; for(const word of words){const candidate=current?`${current} ${word}`:word;if(!current||font.widthOfTextAtSize(candidate,size)<=maxWidth)current=candidate;else{lines.push(current);current=word}}if(current)lines.push(current);return lines }
@@ -24,7 +24,7 @@ function drawRow(page:PDFPage, fonts:{regular:PDFFont;bold:PDFFont}, values:stri
 }
 
 export function speakersPdfScheduleRows(input:Pick<Input,'month'|'schedule'>):{local:TalkSchedule[];outgoing:TalkSchedule[]}{
-  const bounds=monthBounds(input.month), sorted=[...input.schedule].sort((a,b)=>a.data.localeCompare(b.data)||a.tipo.localeCompare(b.tipo))
+  const bounds=monthBounds(input.month), sorted=[...input.schedule].sort((a,b)=>a.data.localeCompare(b.data)||(a.secao??'s2').localeCompare(b.secao??'s2')||a.tipo.localeCompare(b.tipo))
   return {
     local:sorted.filter(item=>item.tipo!=='saida_orador'&&item.data>=bounds.start&&item.data<=bounds.end),
     outgoing:sorted.filter(item=>item.tipo==='saida_orador'&&item.data>=bounds.start),
@@ -41,15 +41,15 @@ export async function createSpeakersSchedulePdf(input:Input):Promise<Uint8Array>
   const ensure=(height:number):void=>{if(y-height<34)addPage()}
   const section=(title:string,headers:string[],widths:number[]):void=>{ensure(48);page.drawText(title.toLocaleUpperCase('pt-BR'),{x:32,y:y-2,size:10,font:bold,color:PDF_INK});y-=14;drawRow(page,fonts,headers,widths,y,20,true);y-=20}
   addPage()
-  const localWidths=[90,175,50,275,187],localHeaders=['Data','Orador','Nº','Tema','Congregação']
+  const localWidths=[72,42,150,45,280,188],localHeaders=['Data','Seção','Orador','Nº','Tema','Congregação']
   section('Discursos em nossa congregação',localHeaders,localWidths)
   if(!local.length){page!.drawText('Nenhum discurso programado neste período.',{x:37,y:y-20,size:8.5,font:regular,color:PDF_MUTED});y-=32}
-  for(const item of local){const theme=input.themes[item.temaId??''];const external=item.tipo==='discurso_visitante'?congregationName(item,input.congregations):congregation;const values=[pdfDate(item.data),speakerName(item,input.speakers),String(theme?.numero??item.temaNumero??'-'),theme?.titulo??item.temaTitulo??'-',external];const height=rowHeight(regular,values,localWidths);if(y-height<34){addPage();section('Discursos em nossa congregação - continuação',localHeaders,localWidths)}drawRow(page!,fonts,values,localWidths,y,height);y-=height}
+  for(const item of local){const theme=input.themes[item.temaId??''];const external=item.tipo==='discurso_visitante'?congregationName(item,input.congregations):congregation;const values=[pdfDate(item.data),item.secao==='s1'?'1ª':'2ª',speakerName(item,input.speakers),String(theme?.numero??item.temaNumero??'-'),theme?.titulo??item.temaTitulo??'-',external];const height=rowHeight(regular,values,localWidths);if(y-height<34){addPage();section('Discursos em nossa congregação - continuação',localHeaders,localWidths)}drawRow(page!,fonts,values,localWidths,y,height);y-=height}
   y-=16
-  const outgoingWidths=[90,165,70,180,272],outgoingHeaders=['Data','Orador','Tema','Congregação','Endereço']
+  const outgoingWidths=[72,42,145,60,180,278],outgoingHeaders=['Data','Seção','Orador','Tema','Congregação','Endereço']
   section('Saídas de nossos oradores',outgoingHeaders,outgoingWidths)
   if(!outgoing.length){page!.drawText('Nenhuma saída programada neste período.',{x:37,y:y-20,size:8.5,font:regular,color:PDF_MUTED})}
-  for(const item of outgoing){const theme=input.themes[item.temaId??''],destination=input.congregations[scheduleCongregationId(item)];const values=[pdfDate(item.data),speakerName(item,input.speakers),String(theme?.numero??item.temaNumero??'-'),destination?.nome??scheduleCongregationName(item)??'-',destination?.localizacao??'-'];const height=rowHeight(regular,values,outgoingWidths);if(y-height<34){addPage();section('Saídas de nossos oradores - continuação',outgoingHeaders,outgoingWidths)}drawRow(page!,fonts,values,outgoingWidths,y,height);y-=height}
+  for(const item of outgoing){const theme=input.themes[item.temaId??''],destination=input.congregations[scheduleCongregationId(item)];const speaker=input.speakers[item.oradorId??''];const values=[/^\d{4}-\d{2}-\d{2}$/.test(item.data)?`${pdfDate(item.data)}/${item.data.slice(0,4)}`:item.data,(speaker?.secao??item.secao)==='s1'?'1ª':'2ª',speakerName(item,input.speakers),String(theme?.numero??item.temaNumero??'-'),destination?.nome??scheduleCongregationName(item)??'-',destination?.observacoes?.trim()||destination?.localizacao||'-'];const height=rowHeight(regular,values,outgoingWidths);if(y-height<34){addPage();section('Saídas de nossos oradores - continuação',outgoingHeaders,outgoingWidths)}drawRow(page!,fonts,values,outgoingWidths,y,height);y-=height}
   return pdf.save()
 }
 

@@ -5,7 +5,7 @@ export const TASK_ROLES = [
 
 export type TaskRole = typeof TASK_ROLES[number]
 type TaskBaseRole = 'presidente' | 'operador' | 'leitor' | 'entrada' | 'auditorio' | 'microfone'
-export type TaskMeetingType = 'midweek' | 'weekend'
+export type TaskMeetingType = 'midweek' | 'weekend' | 'weekend_s1'
 
 const TASK_ROLE_BASE: Record<TaskRole, TaskBaseRole> = {
   presidente: 'presidente', operador1: 'operador', operador2: 'operador',
@@ -31,6 +31,7 @@ export interface TaskPerson {
   active?: boolean
   ativo?: boolean
   masterId?: string
+  weekendSection?: 's1' | 's2'
   roles?: Partial<Record<TaskBaseRole | TaskRole, boolean>>
   rule?: 'both' | 'midweek' | 'weekend' | 'none' | string
   refFolgaDate?: string
@@ -128,9 +129,11 @@ export interface TaskDomainContext {
 
 export interface TaskPlanning {
   periodMode?: 'month' | 'bimester'
-  meetingDays?: { midweekDow?: number; weekendDow?: number }
+  meetingDays?: { midweekDow?: number; weekendDow?: number; weekendS1Dow?: number }
   midweekDow?: number
   weekendDow?: number
+  weekendS1Dow?: number
+  enableSection1?: boolean
   excludedDates?: string[] | Record<string, string>
 }
 
@@ -145,6 +148,8 @@ type IneligibilityReason =
   | 'Indisponível nesta data'
   | 'Evento bloqueia a reunião'
   | 'Discurso na mesma data'
+  | 'Pessoa designada na outra sessão neste dia'
+  | 'Pessoa cadastrada para outra sessão'
   | 'Dois jovens nos microfones'
   | 'Outra função incompatível na reunião'
 
@@ -202,7 +207,7 @@ export function summarizeTaskGroups(context: TaskDomainContext, periodId: string
 
 export function canonicalMeetingType(raw: unknown): TaskMeetingType | null {
   const value = String(raw ?? '').toLowerCase()
-  if (value === 'weekend_s1') return null
+  if (value === 'weekend_s1') return 'weekend_s1'
   if (value === 'midweek' || /meio|mid|ministerio/.test(value)) return 'midweek'
   if (value === 'weekend' || value === 'weekend_s2' || value === 'weekend_merged' || /fim|weekend/.test(value)) return 'weekend'
   return null
@@ -252,7 +257,21 @@ function ruleAllows(person: TaskPerson, meeting: TaskMeeting): boolean {
   const rule = person.rule ?? 'both'
   if (!type || rule === 'none') return false
   if (type === 'midweek') return rule === 'both' || rule === 'midweek'
+  if (meeting.type !== 'weekend_merged' && person.weekendSection && person.weekendSection !== (type === 'weekend_s1' ? 's1' : 's2')) return false
   return rule === 'both' || rule === 'weekend'
+}
+
+function assignedInOtherSection(personId: string, meeting: TaskMeeting, context: TaskDomainContext): boolean {
+  const type = canonicalMeetingType(meeting.type)
+  if (meeting.type === 'weekend_merged') return false
+  if (!meeting.date || (type !== 'weekend' && type !== 'weekend_s1')) return false
+  const other = type === 'weekend_s1' ? 'weekend' : 'weekend_s1'
+  const masterId = context.people[personId]?.masterId || personId
+  return meetingEntries(context.periods).some(({ meeting: candidate }) => candidate.date === meeting.date && canonicalMeetingType(candidate.type) === other &&
+    TASK_ROLES.some(role => {
+      const id = assignmentForRole(candidate, role)
+      return id && (context.people[id]?.masterId || id) === masterId
+    }))
 }
 
 function dayParity(date: string | undefined): number | null {
@@ -304,10 +323,10 @@ export function canShareMeeting(personId: string, role: TaskRole, assignments: P
     (role === 'presidente' && PRESIDENT_SECONDARY_SET.has(existing))
 }
 
-export function hasSpeakerAssignment(personId:string, date:string|undefined, context:TaskDomainContext):boolean {
+export function hasSpeakerAssignment(personId:string, date:string|undefined, context:TaskDomainContext, section?:'s1'|'s2'):boolean {
   if (!date) return false
   const person=context.people[personId]
-  return Object.values(context.discursos?.programacao ?? {}).some(item => item.secao !== 's1' && item.data === date &&
+  return Object.values(context.discursos?.programacao ?? {}).some(item => item.data === date && (!section || (item.secao ?? 's2') === section) &&
     [item.oradorId,item.oradorSecundarioId].some(id => {
       const speaker=id ? context.discursos?.oradores?.[id] : undefined
       if (speaker?.masterId) return speaker.masterId === (person?.masterId || personId)
@@ -330,7 +349,10 @@ export function eligibility(
   if (!roleApplies(role, meeting)) return { eligible: false, reason: 'Função não aplicável nesta reunião' }
   if (!personHasRole(person, role)) return { eligible: false, reason: 'Pessoa não habilitada nesta função' }
   if (person.jovem === true && role !== 'mic1' && role !== 'mic2') return { eligible: false, reason: 'Jovem recebe somente microfone' }
-  if (!ruleAllows(person, meeting)) return { eligible: false, reason: 'Tipo de reunião incompatível' }
+  if (!ruleAllows(person, meeting)) return { eligible: false, reason: person.weekendSection && canonicalMeetingType(meeting.type) !== 'midweek' ? 'Pessoa cadastrada para outra sessão' : 'Tipo de reunião incompatível' }
+  if (assignedInOtherSection(personId, meeting, context)) return { eligible: false, reason: 'Pessoa designada na outra sessão neste dia' }
+  const meetingType = canonicalMeetingType(meeting.type)
+  if (meeting.type !== 'weekend_merged' && (meetingType === 'weekend' || meetingType === 'weekend_s1') && hasSpeakerAssignment(personId, meeting.date, context, meetingType === 'weekend_s1' ? 's2' : 's1')) return { eligible:false, reason:'Pessoa designada na outra sessão neste dia' }
   if (isFolga(person, meeting.date)) return { eligible: false, reason: 'Folga nesta data' }
   if (isUnavailable(person, meeting.date)) return { eligible: false, reason: 'Indisponível nesta data' }
   if (meetingIsBlocked(context, meeting)) return { eligible: false, reason: 'Evento bloqueia a reunião' }
@@ -419,6 +441,7 @@ export function withCanonicalPeriod(
 ): { periodId: string; periods: Record<string, TaskPeriod> } | null {
   const midweekDow = planning.meetingDays?.midweekDow ?? planning.midweekDow
   const weekendDow = planning.meetingDays?.weekendDow ?? planning.weekendDow
+  const weekendS1Dow = planning.meetingDays?.weekendS1Dow ?? planning.weekendS1Dow ?? weekendDow
   if (!Number.isInteger(midweekDow) || !Number.isInteger(weekendDow)) return null
   const mode = planning.periodMode === 'month' ? 'month' : 'bimester'
   const periodId = periodKeyForDate(date, mode)
@@ -429,15 +452,21 @@ export function withCanonicalPeriod(
   const meetings = { ...(current.meetings ?? {}) }
   const existing = new Set(Object.values(meetings).flatMap(meeting => {
     const type = canonicalMeetingType(meeting.type)
+    if (meeting.date && meeting.type === 'weekend_merged') return [`${meeting.date}:weekend`,`${meeting.date}:weekend_s1`]
     return meeting.date && type ? [`${meeting.date}:${type}`] : []
   }))
   const excluded = new Set(Array.isArray(planning.excludedDates) ? planning.excludedDates : Object.values(planning.excludedDates ?? {}))
   for (const cursor = new Date(start); cursor <= end; cursor.setDate(cursor.getDate() + 1)) {
     const iso = localDateToIso(cursor)
     if (excluded.has(iso)) continue
-    const type: TaskMeetingType | null = cursor.getDay() === midweekDow ? 'midweek' : cursor.getDay() === weekendDow ? 'weekend' : null
-    if (!type || existing.has(`${iso}:${type}`)) continue
-    meetings[`${iso}__${type}`] = { date: iso, type, assignments: {}, manualEdits: {} }
+    const types: TaskMeetingType[] = []
+    if (cursor.getDay() === midweekDow) types.push('midweek')
+    if (cursor.getDay() === weekendDow) types.push('weekend')
+    if (planning.enableSection1 && cursor.getDay() === weekendS1Dow) types.push('weekend_s1')
+    for (const type of types) {
+      if (existing.has(`${iso}:${type}`)) continue
+      meetings[`${iso}__${type}`] = { date: iso, type, assignments: {}, manualEdits: {} }
+    }
   }
   return { periodId, periods: { ...periods, [periodId]: { ...current, meetings } } }
 }
@@ -461,6 +490,18 @@ export function computeGeneration(
   if (!targets.length) return { aborted: true, patch: {}, generated: 0, errors: ['Nenhuma reunião válida encontrada a partir da data informada.'] }
   const locked = [...new Set(targets.filter(entry => context.periods[entry.periodId]?.locked).map(entry => entry.periodId))]
   if (locked.length) return { aborted: true, patch: {}, generated: 0, errors: [`Período travado: ${locked.join(', ')}.`] }
+
+  // A geração consulta as designações já escolhidas no próprio lote. Assim, S1 e S2
+  // não podem reservar a mesma pessoa (inclusive por IDs locais com o mesmo masterId).
+  const workingPeriods = structuredClone(context.periods)
+  for (const entry of targets) {
+    const working = workingPeriods[entry.periodId]?.meetings?.[entry.meetingId]
+    if (!working) continue
+    for (const role of TASK_ROLES) if ((roleFilter === null || roleFilter === role) && entry.meeting.manualEdits?.[role] !== true) {
+      delete working.assignments?.[role]
+    }
+  }
+  context = { ...context, periods:workingPeriods }
 
   const targetKeys = new Set(targets.map(entry => `${entry.periodId}/${entry.meetingId}`))
   const stats: Record<string, PersonStats> = {}
@@ -511,6 +552,8 @@ export function computeGeneration(
       if (reservedSecondary === role && finalAssignments[role]) {
         const id = finalAssignments[role]!
         patch[`${entry.periodId}/meetings/${entry.meetingId}/assignments/${role}`] = id
+        const working = workingPeriods[entry.periodId]?.meetings?.[entry.meetingId]
+        if (working) (working.assignments ??= {})[role] = id
         addStat(id, role)
         addParticipation(entry, id)
         generated += 1
@@ -527,6 +570,8 @@ export function computeGeneration(
         return
       }
       finalAssignments[role] = chosen
+      const working = workingPeriods[entry.periodId]?.meetings?.[entry.meetingId]
+      if (working) (working.assignments ??= {})[role] = chosen
       patch[`${entry.periodId}/meetings/${entry.meetingId}/assignments/${role}`] = chosen
       addStat(chosen, role)
       addParticipation(entry, chosen)

@@ -11,19 +11,20 @@ export const MODULE_META: Record<
   tarefas:     { label: 'Tarefas',      desc: 'Funções da reunião',           icon: '📋', color: '#7E3AF2' },
   limpeza:     { label: 'Limpeza',      desc: 'Grupos, rodízio e PDF',        icon: '🧹', color: '#006EB6' },
   escala:      { label: 'Escala TPL',   desc: 'Escala de campo TPL',          icon: '🌿', color: '#1A6B3C' },
-  oradores:    { label: 'Oradores',      desc: 'Discursos, saídas e intercâmbios', icon: '🎙️', color: '#72520A' },
+  oradores:    { label: 'Oradores · 2ª seção', desc: 'Discursos locais e saídas', icon: '🎙️', color: '#72520A' },
+  oradoresS1:  { label: 'Oradores · 1ª seção', desc: 'Discursos locais e saídas', icon: '🎙️', color: '#72520A' },
   servicoCampo:{ label: 'Serviço de Campo', desc: 'Saídas, dirigentes e locais', icon: '⌖', color: '#8A5A00' },
   individual:  { label: 'Minha agenda',  desc: 'Suas designações e compromissos', icon: '✓', color: '#006EB6' },
 }
 
 const MODULES_ORDER: ModuleName[] = [
-  'mestre', 'servicoCampo', 'tarefas', 'oradores', 'limpeza', 'escala', 'individual',
+  'mestre', 'servicoCampo', 'tarefas', 'oradoresS1', 'oradores', 'limpeza', 'escala', 'individual',
 ]
 
 export const INSTALLABLE_MODULES: ModuleName[] = MODULES_ORDER.filter(module => module !== 'individual')
 
 export function moduleFromPath(pathname: string): ModuleName | null {
-  const match=pathname.match(/^\/modulos\/(mestre|tarefas|oradores|limpeza|escala|servicoCampo)\/?$/)
+  const match=pathname.match(/^\/modulos\/(mestre|tarefas|oradoresS1|oradores|limpeza|escala|servicoCampo)\/?$/)
   return match ? match[1] as ModuleName : null
 }
 
@@ -46,6 +47,7 @@ async function loadModule(
     limpeza:     () => import('./modules/limpeza'),
     escala:      () => import('./modules/escala'),
     oradores:    () => import('./modules/oradores'),
+    oradoresS1:  () => import('./modules/oradores'),
     servicoCampo:() => import('./modules/servico-campo'),
     individual:  () => import('./modules/individual'),
   }
@@ -81,7 +83,7 @@ export async function navigateTo(modulo: ModuleName, overview?:AppContext['overv
   const content = document.getElementById('appContent')!
   content.innerHTML = '<p style="padding:24px;color:var(--ink-3)">Carregando…</p>'
   try {
-    await loadModule(modulo, { ..._ctx,overview }, () => requestId === navigationId)
+    await loadModule(modulo, { ..._ctx,overview,oradoresSection:modulo==='oradoresS1'?'s1':modulo==='oradores'?'s2':undefined }, () => requestId === navigationId)
     if (requestId === navigationId) {
       animateRoute(content)
     }

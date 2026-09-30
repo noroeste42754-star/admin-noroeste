@@ -12,3 +12,7 @@ deno.lock
 
 # Local Netlify folder
 .netlify
+
+# Exports locais contêm contatos, senhas e sessões privadas; não versionar.
+/output/
+/tmp/

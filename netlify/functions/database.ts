@@ -6,6 +6,8 @@ import { adminDatabase } from '../lib/subscription-store.ts'
 import { readBatch } from '../lib/database-reads.ts'
 import { validConditionalPatch } from '../lib/conditional-write.ts'
 import { canAccessData, canMutateData, containsPrivateRoot, normalizeDataPath, withoutPrivateRoots } from '../lib/data-authorization.ts'
+import { canMutateSpeakerSection } from '../lib/speaker-section-authorization.ts'
+import { introducesSecondSectionConflict } from '../lib/second-section-conflicts.ts'
 
 export async function databaseResponse(request:Request,database=adminDatabase,sessionFor=appSession):Promise<Response> {
   if (!['GET', 'PUT', 'PATCH', 'DELETE'].includes(request.method)) return json(405, { error:'Método não permitido.' })
@@ -41,14 +43,17 @@ export async function databaseResponse(request:Request,database=adminDatabase,se
     if(hasExpected&&!path)return json(400,{error:'Selecione um registro para salvar.'})
     if(request.method==='PATCH'&&hasExpected&&!validConditionalPatch(body['expected'],value))return json(400,{error:'Alterações condicionais inválidas.'})
     const entry=activityEntry(session,request.method==='DELETE'?'remover':'alterar',path)
-    let applied=false
+    let applied=false,deniedSection=false,deniedConflict=false
     const result=await database().ref('/').transaction(current=>{
+      deniedSection=false;deniedConflict=false
       if(current===null){applied=false;return null}
+      if(!canMutateSpeakerSection(current,path,request.method,value,session.usuario.apps)){deniedSection=true;applied=false;return undefined}
       const next=auditedWrite(current,path,request.method,value,hasExpected,body['expected'],entry)
+      if(next!==undefined&&introducesSecondSectionConflict(current,next)){deniedConflict=true;applied=false;return undefined}
       applied=next!==undefined
       return next
     },undefined,false)
-    return result.committed&&applied?json(200,{ok:true}):json(409,{error:'O registro mudou, possui vínculos ou o período está publicado. Recarregue e confira antes de editar.'})
+    return deniedConflict?json(409,{error:'A mesma pessoa não pode trabalhar nas duas seções.'}):deniedSection?json(403,{error:'Este registro pertence à outra seção.'}):result.committed&&applied?json(200,{ok:true}):json(409,{error:'O registro mudou, possui vínculos ou o período está publicado. Recarregue e confira antes de editar.'})
   } catch { return json(503, { error:'Operação de dados indisponível.' }) }
 }
 export default (request:Request)=>databaseResponse(request)

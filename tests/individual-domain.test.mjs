@@ -207,16 +207,17 @@ test('dados das reuniões selecionam datas futuras e módulos conforme o tipo', 
   assert.doesNotMatch(midweekMessage, /^VIDA E MINISTÉRIO/m)
 })
 
-test('Oradores integra S2 confirmada por vínculo e inclui visitantes no quadro', () => {
-  const data = { master:{ pessoas:{ m1:{ name:'Ana', active:true } } }, tarefas:{ people:{ p1:{ masterId:'m1' } }, discursos:{ oradores:{ o1:{ nome:'Ana', pessoaId:'p1' }, v1:{ nome:'Visitante' } }, temas:{ t1:{ titulo:'Tema público' } }, programacao:{
+test('Oradores integra as duas seções confirmadas por vínculo e inclui visitantes no quadro', () => {
+  const data = { master:{ pessoas:{ m1:{ name:'Ana', active:true }, m2:{ name:'Bruno', active:true } } }, tarefas:{ people:{ p1:{ masterId:'m1' }, p2:{ masterId:'m2' } }, discursos:{ oradores:{ o1:{ nome:'Ana', pessoaId:'p1', secao:'s2' }, o2:{ nome:'Bruno', pessoaId:'p2', secao:'s1' }, v1:{ nome:'Visitante' } }, temas:{ t1:{ titulo:'Tema público' } }, programacao:{
     local:{ data:'2026-09-20', tipo:'discurso_local', status:'confirmado', oradorId:'o1', temaId:'t1', observacoes:'SEGREDO' },
     visita:{ secao:'s2', data:'2026-09-27', tipo:'discurso_visitante', status:'confirmado', oradorId:'v1' },
     saida:{ secao:'s2', data:'2026-09-20', tipo:'saida_orador', status:'confirmado', oradorSecundarioId:'o1', congregacaoDestinoNome:'Destino' },
-    antiga:{ secao:'s1', data:'2026-09-20', status:'confirmado', oradorId:'o1' },
+    primeira:{ secao:'s1', data:'2026-09-20', status:'confirmado', oradorId:'o2' },
     rascunho:{ secao:'s2', data:'2026-09-20', status:'por_confirmar', oradorId:'o1' },
   } } } }
   const personal = collectAgendaEvents(data, 'm1')
   assert.equal(personal.length, 2)
+  assert.equal(collectAgendaEvents(data, 'm2').length, 1)
   assert.equal(personal.find(item => item.title === 'Saída de orador').location, 'Destino')
   assert.deepEqual(collectAgendaEvents(data, 'm1', { oradores:false }), [])
   assert.deepEqual(collectAgendaEvents(data, 'Ana'), [])
@@ -224,10 +225,11 @@ test('Oradores integra S2 confirmada por vínculo e inclui visitantes no quadro'
   assert.ok(board.some(item => item.people.includes('Visitante')))
   const selected = { date:'2026-09-20', kind:'weekend' }
   const meeting = boardMeetingEvents(board, selected)
-  assert.equal(meeting.length, 1)
+  assert.equal(meeting.length, 2)
   assert.match(boardMeetingMessage(meeting, selected), /Ana/)
   assert.match(boardMeetingMessage(meeting, selected), /Tema público/)
-  assert.doesNotMatch(JSON.stringify(board), /SEGREDO|rascunho|antiga/)
+  assert.doesNotMatch(JSON.stringify(board), /SEGREDO|rascunho/)
+  assert.match(boardMeetingMessage(meeting, selected), /Bruno/)
   assert.match(agendaToIcs(personal, '2026-09-01T00:00:00Z'), /oradores:local/)
 })
 

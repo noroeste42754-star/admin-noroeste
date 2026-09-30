@@ -157,7 +157,13 @@ test('comparação da publicação considera somente dados do PDF e saídas futu
   root.oradores.a.nome='Nome atual';root.congregacoes.c.localizacao='Rua B'
   assert.notEqual(publicationSource(root,'2026-09'),source)
   root.congregacoes.c.localizacao='Rua A';root.programacao.legado={data:'2026-09-21',tipo:'discurso_local',secao:'s1'}
-  assert.equal(publicationSource(root,'2026-09'),source)
+  assert.notEqual(publicationSource(root,'2026-09'),source)
+  delete root.programacao.legado
+  root.programacao.p.oradorSecundarioNome='Segundo orador'
+  assert.notEqual(publicationSource(root,'2026-09'),source)
+  delete root.programacao.p.oradorSecundarioNome
+  root.congregacoes.c.observacoes='Endereço usado no PDF antigo'
+  assert.notEqual(publicationSource(root,'2026-09'),source)
 })
 
 test('pendências: um item por programação, apenas hoje até 90 dias, com destino de resolução',()=>{
@@ -169,8 +175,8 @@ test('pendências: um item por programação, apenas hoje até 90 dias, com dest
   again:{data:'2026-01-07',tipo:'discurso_local',oradorNome:'Local',temaTitulo:'Tema',confirmacao:{status:true}},
  }})
  const rows=speakerPendingItems(root,'2026-01-01')
- assert.deepEqual(rows.map(x=>x.recordId),['today','again','confirm','edge'])
- assert.deepEqual(rows.map(x=>x.action),['oradorId','reconfirm','confirm','congregacaoId'])
+ assert.deepEqual(rows.map(x=>x.recordId),['today','legacy','again','confirm','edge'])
+ assert.deepEqual(rows.map(x=>x.action),['oradorId','oradorId','reconfirm','confirm','congregacaoId'])
  assert.equal(new Set(rows.map(x=>x.recordId)).size,rows.length)
  assert.match(rows[0].title,/Sem orador.*Sem tema/)
  root.programacao.today.oradorNome='Definido'

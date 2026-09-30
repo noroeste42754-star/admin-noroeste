@@ -1,0 +1,16 @@
+{
+  "id": "/modulos/oradoresS1/",
+  "name": "Oradores · 1ª seção — Noroeste",
+  "short_name": "Oradores 1ª",
+  "description": "Módulo de Oradores da 1ª seção do Noroeste",
+  "start_url": "/modulos/oradoresS1/",
+  "scope": "/modulos/oradoresS1/",
+  "display": "standalone",
+  "background_color": "#F4F7FA",
+  "theme_color": "#72520A",
+  "icons": [
+    { "src": "/modulos/oradoresS1/icon.svg", "sizes": "any", "type": "image/svg+xml" },
+    { "src": "/icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "/icon-512.png", "sizes": "512x512", "type": "image/png" }
+  ]
+}
