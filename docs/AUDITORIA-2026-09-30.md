@@ -17,7 +17,7 @@ Escopo: código local, build, funções, testes de navegador e export local do p
 
 | Verificação | Resultado |
 | --- | --- |
-| Testes dos módulos ativos, API, permissões e integração | 223 verificações aprovadas |
+| Testes dos módulos ativos, API, permissões e integração | 224 verificações aprovadas |
 | Compatibilidade com código/dados históricos | 68 verificações aprovadas; inclui testes compartilhados com o grupo ativo |
 | Navegador | 11 suítes aprovadas, incluindo larguras de 320 a 1280 px |
 | PWA compilada | Quadro e alias Agenda abrem offline; nenhum cache de Netlify Functions |
@@ -50,3 +50,9 @@ A auditoria do export adaptado retorna 13 alertas. Eles não são 13 identidades
 Destino solicitado: `https://noroeste.netlify.app/`. As contas disponíveis no CLI não listavam esse site. O site responder HTTP 200 não comprova que este build foi publicado nele. Não foi usado o site pessoal nem o de testes como substituto, nem foram alteradas credenciais/envs de produção. Commit, push, importação do JSON e deploy são etapas distintas.
 
 Na verificação anterior ao commit, tanto `/quadro/` quanto `/.netlify/functions/quadro-data` retornavam HTML do Admin antigo, em vez da nova tela/API JSON. Portanto a nova versão ainda não estava em produção naquele momento. Após publicação, esses dois endereços devem ser verificados separadamente.
+
+### Verificação após o push
+
+O deploy automático publicou a implementação do commit `83a4683`. Os arquivos JavaScript da página pública coincidiram exatamente com os do build local. `/quadro/` e `/agenda/` passaram a servir o Quadro novo. A API respondeu HTTP 200 com schema válido, todas as cinco fontes concluídas, nenhuma fonte em falha, 109 designações, um evento geral e dois documentos; sem raízes privadas no payload. As cinco APIs pessoais/de Limpeza encerradas responderam HTTP 410; a leitura genérica sem sessão respondeu HTTP 401.
+
+O teste em produção também revelou que o `_redirects` antigo tinha um fallback global, avaliado antes do `netlify.toml`. As regras de encerramento foram acrescentadas acima desse fallback e protegidas por teste de regressão, com redirecionamento forçado. A precedência é documentada na [documentação oficial do Netlify](https://docs.netlify.com/manage/routing/redirects/overview/). Esta correção é uma etapa adicional de fechamento da auditoria, não uma exclusão de dados.

@@ -6,6 +6,16 @@ import { activeData, preserveArchivedTasks } from '../netlify/lib/retired-data.t
 import { loadAgendaRoot } from '../netlify/lib/agenda-root.ts'
 import { parseAgendaUiPreferences } from '../src/modules/individual-preferences.ts'
 
+test('redirecionamentos dos módulos retirados vêm antes do fallback da SPA',async()=>{
+  const rules=(await readFile(new URL('../public/_redirects',import.meta.url),'utf8')).trim().split(/\r?\n/).filter(line=>line&&!line.startsWith('#'))
+  const fallback=rules.indexOf('/* /index.html 200')
+  assert.ok(fallback>=0)
+  for(const module of ['limpeza','servicoCampo'])for(const suffix of ['','/*']){
+    const index=rules.indexOf('/modulos/'+module+suffix+' /quadro/ 301!')
+    assert.ok(index>=0&&index<fallback,module+suffix)
+  }
+})
+
 test('raízes legadas continuam retiradas, mas tarefas/discursos voltou a ser ativo', () => {
   const apps = { mestre:true }
   for (const path of ['programacao', 'secretario/relatorios', 'oradores', 'limpeza', 'servicoCampo']) {

@@ -1,1 +1,5 @@
+/modulos/limpeza /quadro/ 301!
+/modulos/limpeza/* /quadro/ 301!
+/modulos/servicoCampo /quadro/ 301!
+/modulos/servicoCampo/* /quadro/ 301!
 /* /index.html 200
