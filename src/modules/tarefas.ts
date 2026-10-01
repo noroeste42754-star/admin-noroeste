@@ -7,7 +7,6 @@ import { canonicalTaskPerson } from './central-person'
 import { fortalezaToday, fortalezaCurrentMonth, isValidCivilDate, nextCivilMonth } from './civil-date'
 import { tasksPersonMessage, tasksDayMessage } from './tarefas-messages'
 import { showMessagePreview } from '../ui/message-preview'
-import type { LimpezaPeriodoGerado } from '../types'
 import { editorBusy, editorError } from '../ui/editor-feedback'
 import { lockPublicationUi } from '../ui/publication-busy'
 import { renderWorkspaceNav } from '../ui/workspace-nav'
@@ -17,7 +16,7 @@ import {
   compareAndUpdate,
   update,
   tarefasRef,
-  agendaConfigRef, child, limpezaPeriodosRef,
+  agendaConfigRef, child,
   tarefasDiscursosRef,
   tarefasPeopleRef,
   tarefasPlanejamentoRef,
@@ -105,7 +104,6 @@ let planning: TarefasPlanning = {}
 let events: Record<string, TaskEvent> = {}
 let discursos: TaskDomainContext['discursos'] = {}
 let taskMessageSettings=defaultModuleMessageSettings('tarefas')
-let cleaningPeriods:Record<string,LimpezaPeriodoGerado>={}
 let congregationName = 'Noroeste'
 let masterPeople: Record<string, { name?: string; whatsapp?: string; active?: boolean; role?: string | null }> = {}
 let context: AppContext
@@ -248,12 +246,11 @@ function ensureLoaded(): Promise<boolean> {
 
 async function loadTarefas(): Promise<boolean> {
   try {
-    const [tarefasSnap, congregacaoSnap, masterPeopleSnap, messagesSnap, cleaningSnap] = await Promise.all([
+    const [tarefasSnap, congregacaoSnap, masterPeopleSnap, messagesSnap] = await Promise.all([
       get(tarefasRef),
       get(configCongregacaoRef),
       get(pessoasRef),
       get<ModuleMessageSettings>(child(agendaConfigRef,'moduleWhatsApp/tarefas')),
-      context.usuario.apps.limpeza||context.usuario.apps.mestre?get<Record<string,LimpezaPeriodoGerado>>(limpezaPeriodosRef):Promise.resolve(null),
     ])
 
     const tarefas = tarefasSnap.exists() ? tarefasSnap.val() as {
@@ -264,7 +261,6 @@ async function loadTarefas(): Promise<boolean> {
       events?: Record<string, TaskEvent>
     } : {}
     taskMessageSettings={...defaultModuleMessageSettings('tarefas'),...(messagesSnap.val()??{})}
-    cleaningPeriods=cleaningSnap?.val()??{}
     pessoas = tarefas.people ?? {}
     periods = tarefas.scale?.periods ?? {}
     planning = tarefas.planning ?? {}
@@ -356,7 +352,7 @@ function renderEscala(): void {
 
   content.innerHTML = `
     ${sectionTitle('Escala de tarefas', '')}
-    ${locked ? '<div class="notice">Esta escala está publicada no Minha Agenda e bloqueada para edição.</div>' : '<div class="notice warning">Rascunho administrativo: publique para aparecer no Minha Agenda.</div>'}
+    ${locked ? '<div class="notice">Esta escala está publicada no Quadro de Anúncios e bloqueada para edição.</div>' : '<div class="notice warning">Rascunho administrativo: publique para aparecer no Quadro de Anúncios.</div>'}
     <div class="task-period-toolbar">
       <div class="module-form-grid">
         <div class="form-group" style="margin:0"><label class="form-label" for="tarefasPeriodMode">Formato</label><select id="tarefasPeriodMode" class="form-select"><option value="month" ${periodMode === 'month' ? 'selected' : ''}>Mensal</option><option value="bimester" ${periodMode === 'bimester' ? 'selected' : ''}>Bimestral</option></select></div>
@@ -387,7 +383,7 @@ function renderEscala(): void {
     </div>
     ${preservedMeetings.length ? `<details class="form-panel" style="margin-top:12px"><summary>Registros preservados fora do período atual (${preservedMeetings.length})</summary><div class="module-option-list" style="margin-top:10px">${preservedMeetings.map(entry => `<div class="module-list-row"><div><strong>${escapeHtml(formatDate(entry.meeting.date))}</strong><small>${canonicalMeetingType(entry.meeting.type) === 'midweek' ? 'Meio de semana' : 'Fim de semana'} · ${assignmentCount(entry.meeting)} função(ões)</small></div></div>`).join('')}</div></details>` : ''}`
 
-  document.getElementById('taskSendDay')?.addEventListener('click',()=>{const date=(document.getElementById('taskMessageDate') as HTMLSelectElement).value;const cleaning=Object.values(cleaningPeriods).flatMap(period=>Object.values(period.semanas??{})).find(week=>week.dataMeioSemana===date||week.dataFimSemana===date)?.grupoNome||'';showTaskMessage(tasksDayMessage(date,pessoas,allPeriodMeetings,cleaning,taskMessageSettings.meetingText))})
+  document.getElementById('taskSendDay')?.addEventListener('click',()=>{const date=(document.getElementById('taskMessageDate') as HTMLSelectElement).value;showTaskMessage(tasksDayMessage(date,pessoas,allPeriodMeetings,'',taskMessageSettings.meetingText))})
   document.getElementById('tarefasPrintFont')?.addEventListener('input', (event) => {
     const value = Number((event.target as HTMLInputElement).value)
     localStorage.setItem(PRINT_FONT_KEY, String(value))
@@ -484,7 +480,7 @@ async function toggleTaskLock(periodId: string): Promise<void> {
     await publishModulePeriod('tarefas', periodId, period, printFont(), locked)
     periods[periodId] ??= {}
     periods[periodId].locked = !locked
-    toast(locked ? 'Escala reaberta para edição' : 'Escala publicada no Minha Agenda')
+    toast(locked ? 'Escala reaberta para edição' : 'Escala publicada no Quadro de Anúncios')
     renderEscala()
   } catch (error) { toast(error instanceof Error?error.message:'Não foi possível alterar a publicação. Confira o período e tente novamente.') }
   finally { changingPublication = false; releaseUi() }

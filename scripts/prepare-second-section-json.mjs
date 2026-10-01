@@ -6,7 +6,7 @@ import { validateBackup } from '../src/modules/mestre-backup-domain.ts'
 import { refreshLegacyScaleParticipant, refreshLegacyScaleTables } from './scale-legacy-refresh.mjs'
 
 const sources = {
-  current: 'C:/Users/eliau/Downloads/tpl-novo-2-default-rtdb-export.json',
+  current: 'C:/Users/eliau/Downloads/tpl-novo-2-original-2026-09-30.json',
   tasks: 'C:/Users/eliau/Downloads/oradores-tarefas-default-rtdb-export.json',
   scale: 'C:/Users/eliau/Downloads/escala-tpl-default-rtdb-export.json',
 }

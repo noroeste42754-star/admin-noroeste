@@ -17,7 +17,8 @@ test('Limpeza nao consulta o modulo retirado', () => {
   assert.equal(canAccessData('secretario/grupos', cleaning, false), false)
   assert.equal(canAccessData('secretario/publicadores', cleaning, false), false)
   assert.equal(canAccessData('secretario/relatorios', cleaning, false), false)
-  assert.equal(canAccessData('tarefas/planning', cleaning, false), true)
+  assert.equal(canAccessData('tarefas/planning', cleaning, false), false)
+  assert.equal(canAccessData('master/pessoas', cleaning, false), false)
 })
 
 test('cada módulo altera somente as próprias mensagens da Agenda', () => {

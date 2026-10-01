@@ -14,7 +14,7 @@ export default async(request:Request):Promise<Response>=>{
     const session=await appSession(request)
     if(!session||!validCsrf(request,session))return json(403,{error:'Sessão inválida.'})
     const body=await objectBody(request), module=body['module'] as PublicPdfModule,id=String(body['periodId']??''),action=body['action']
-    if(!PUBLIC_PDF_MODULES.includes(module)||!/^\d{4}-(0[1-9]|1[0-2])(?:-bimester)?$/.test(id))return json(400,{error:'Período inválido.'})
+    if(!PUBLIC_PDF_MODULES.some(active=>active===module)||!/^\d{4}-(0[1-9]|1[0-2])(?:-bimester)?$/.test(id))return json(400,{error:'Período inválido ou módulo retirado.'})
     if(!session.usuario.apps.mestre&&!session.usuario.apps[module]&&!(module==='oradores'&&session.usuario.apps.oradoresS1))return json(403,{error:'Acesso negado.'})
     const database=adminDatabase(),key=officialDocumentId(module,id)
     if(action==='prepare'||action==='status') {

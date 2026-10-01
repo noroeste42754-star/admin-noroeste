@@ -32,7 +32,7 @@ export function clearCsrfToken(): void {
 
 export async function apiJson<T>(name: string, init: RequestInit = {}): Promise<T> {
   const headers = new Headers(init.headers)
-  if (typeof localStorage !== 'undefined') {
+  if (init.credentials !== 'omit' && typeof localStorage !== 'undefined') {
     try {
       const installation = localStorage.getItem(APP_INSTALLATION_KEY)
       const agendaDevice = localStorage.getItem(AGENDA_DEVICE_KEY)
@@ -52,7 +52,7 @@ export async function apiJson<T>(name: string, init: RequestInit = {}): Promise<
     ? setTimeout(() => { timedOut = true; controller.abort() }, 15_000)
     : undefined
   try {
-    const response = await fetch(`/.netlify/functions/${name}`, { ...init, signal:controller.signal, headers, credentials:'include' })
+    const response = await fetch(`/.netlify/functions/${name}`, { ...init, signal:controller.signal, headers, credentials:init.credentials??'include' })
     const value = await response.json().catch(error => {
       if (controller.signal.aborted) throw error
       return {}

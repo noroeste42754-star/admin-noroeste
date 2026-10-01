@@ -1201,3 +1201,21 @@ button:focus-visible, summary:focus-visible { outline:2px solid var(--blue-mid);
 .substitution-candidate span { min-width:0; overflow-wrap:anywhere; }
 .substitution-candidate small { display:block; font-size:.8rem; color:var(--ink-3); }
 [data-sub-list] { max-height:40vh; overflow:auto; }
+/* Public board: no identity picker or personal schedule. */
+.quadro-standalone{max-width:1040px;margin:auto;padding:20px 16px 48px}
+.quadro-root{min-width:0}
+.quadro-header{display:flex;justify-content:space-between;align-items:center;gap:12px;margin-bottom:16px}
+.quadro-header h1{font-size:1.5rem;color:var(--blue-deep);margin:0}
+.quadro-header p{color:var(--ink-3);margin:6px 0 0}
+.quadro-tabs,.quadro-filters{display:flex;gap:8px;flex-wrap:wrap;margin:16px 0}
+.quadro-filters .btn{font-size:.8rem;white-space:normal}
+.quadro-root .agenda-day-button{position:relative;display:flex;align-items:flex-start;background:var(--surface);border:0;border-top:1px solid var(--border);border-right:1px solid var(--border);font-size:.8rem;padding:6px}
+.quadro-root .agenda-day-button:nth-child(7n){border-right:0}
+.quadro-root .agenda-day-button.has-events{background:var(--blue-light)}
+.quadro-root .agenda-day-button.selected{outline:2px solid var(--blue-deep);outline-offset:-2px;background:var(--gold-light);font-weight:700}
+.quadro-root .agenda-day-button:focus-visible{outline:3px solid var(--blue-mid);outline-offset:-3px}
+.quadro-day-count{position:absolute;bottom:3px;right:3px;min-width:16px;text-align:center;border-radius:8px;background:var(--blue-deep);color:white;font-size:.6rem;line-height:16px;padding:0 3px}
+.quadro-notices{margin-top:16px}
+.quadro-root .agenda-event p,.quadro-root .notice p{white-space:pre-line;overflow-wrap:anywhere}
+.quadro-root .agenda-module-download small{display:block;overflow-wrap:anywhere}
+@media(max-width:480px){.quadro-standalone{padding:14px 10px 32px}.quadro-header{align-items:flex-start}.quadro-header h1{font-size:1.25rem}.quadro-root .agenda-toolbar{flex-wrap:wrap}.quadro-root .agenda-toolbar input{min-width:0;max-width:170px}.quadro-root .agenda-module-download{flex-wrap:wrap}.quadro-root .agenda-module-download>div{min-width:0;flex:1}}

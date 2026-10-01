@@ -18,6 +18,7 @@ export type ModuleName =
   | 'oradoresS1'
   | 'servicoCampo'
   | 'individual'
+  | 'quadro'
 
 type TipoDesignacao =
   | 'presidente'
@@ -176,6 +177,7 @@ export interface AppPermissions {
   oradoresS1?: boolean
   servicoCampo?: boolean
   individual?: boolean
+  quadro?: boolean
 }
 
 export interface Usuario {

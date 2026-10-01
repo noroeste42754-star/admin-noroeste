@@ -35,16 +35,16 @@ function worker(initial = {}, network = async () => { throw new Error('offline')
   }
 }
 
-test('PWA abre o shell offline pelo cache sem consultar a rede', async () => {
+test('PWA tenta rede atualizada e abre o shell salvo quando offline', async () => {
   const app = worker({ '/agenda/':'cached shell' })
   assert.equal(await (await app.navigate()).text(), 'cached shell')
-  assert.deepEqual(app.calls, [])
+  assert.deepEqual(app.calls, ['/agenda/'])
 })
 
 test('PWA sem cache busca o shell na rede', async () => {
   const app = worker({}, async () => new Response('online shell'))
   assert.equal(await (await app.navigate()).text(), 'online shell')
-  assert.deepEqual(app.calls, ['/agenda/'])
+  assert.equal(app.calls[0], '/agenda/')
 })
 
 test('atualizacao incompleta preserva o shell e os assets da versao offline', async () => {

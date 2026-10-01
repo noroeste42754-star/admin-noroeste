@@ -1,8 +1,9 @@
 import type { AgendaPublicDocument } from '../types.ts'
 import { pdfHasExpired } from './pdf-expiry.ts'
 
-export const PUBLIC_PDF_MODULES = ['tarefas', 'oradores', 'escala', 'limpeza', 'servicoCampo'] as const
-export type PublicPdfModule = typeof PUBLIC_PDF_MODULES[number]
+export const PUBLIC_PDF_MODULES = ['tarefas', 'oradores', 'escala'] as const
+// Legacy values remain type-compatible for archived code and historical records only.
+export type PublicPdfModule = typeof PUBLIC_PDF_MODULES[number] | 'limpeza' | 'servicoCampo'
 
 export interface PublicDocumentGroups {
   modules: Partial<Record<PublicPdfModule, AgendaPublicDocument>>
@@ -29,7 +30,7 @@ export function documentCoversMonth(item: AgendaPublicDocument, month: string): 
 export function groupPublicDocuments(documents: AgendaPublicDocument[], month: string, now = Date.now()): PublicDocumentGroups {
   const modules: Partial<Record<PublicPdfModule, AgendaPublicDocument>> = {}
   documents.filter(item => !pdfHasExpired(item.criadoEm, now) && documentCoversMonth(item, month)).forEach(item => {
-    if (!PUBLIC_PDF_MODULES.includes(item.modulo as PublicPdfModule)) return
+    if (!PUBLIC_PDF_MODULES.some(module => module === item.modulo)) return
     const module = item.modulo as PublicPdfModule
     const current = modules[module]
     if (!current || item.criadoEm > current.criadoEm) modules[module] = item
@@ -39,7 +40,7 @@ export function groupPublicDocuments(documents: AgendaPublicDocument[], month: s
 
 export function publicDocumentMonths(documents: AgendaPublicDocument[], now = Date.now()): string[] {
   const result = new Set<string>()
-  documents.filter(item => PUBLIC_PDF_MODULES.includes(item.modulo as PublicPdfModule) && !pdfHasExpired(item.criadoEm, now)).forEach(item => {
+  documents.filter(item => PUBLIC_PDF_MODULES.some(module => module === item.modulo) && !pdfHasExpired(item.criadoEm, now)).forEach(item => {
     const start = item.inicio?.slice(0, 7)
     const end = item.fim?.slice(0, 7)
     if (!validMonth(start ?? '') || !validMonth(end ?? '') || start! > end!) {

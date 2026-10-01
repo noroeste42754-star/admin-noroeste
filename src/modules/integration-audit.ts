@@ -21,10 +21,9 @@ export async function auditIntegrations(root:PublicationRoot,today=fortalezaToda
       }
     }
   }
-  for(const [id,enabled] of Object.entries(root.servicoCampo?.leaders??{}))if(enabled&&(!people[id]||people[id].active===false))issues.push({module:'servicoCampo',id,kind:people[id]?'inativo':'vinculo',detail:'Dirigente aprovado sem pessoa central ativa.'})
   const documents=root.agenda?.documentos??{}
   for(const module of PUBLIC_PDF_MODULES) {
-    const periods=module==='tarefas'?Object.keys(root.tarefas?.scale?.periods??{}):module==='limpeza'?Object.keys(root.limpeza?.periodos??{}):module==='servicoCampo'?Object.keys(root.servicoCampo?.periods??{}):module==='escala'?[...Object.keys(root.escala?.publishedMonths??{}),root.escala?.publishedMonth].filter(Boolean):[]
+    const periods=module==='tarefas'?Object.keys(root.tarefas?.scale?.periods??{}):module==='escala'?[...Object.keys(root.escala?.publishedMonths??{}),root.escala?.publishedMonth].filter(Boolean):[]
     const ids=new Set<string>([...periods,...Object.values(documents).filter((d:any)=>d.modulo===module&&d.origemPeriodoId).map((d:any)=>d.origemPeriodoId)])
     for(const id of ids) {
       if(!/^\d{4}-(0[1-9]|1[0-2])(?:-bimester)?$/.test(id))continue

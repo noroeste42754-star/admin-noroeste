@@ -27,9 +27,7 @@ import {
   rootRef,
   masterRef,
   tarefasRef,
-  limpezaRef,
   escalaRef,
-  servicoCampoRef,
 } from '../firebase'
 import { renderMenuCards, type ItemMenu } from '../ui/menu-cards'
 import { renderWorkspaceNav } from '../ui/workspace-nav'
@@ -126,11 +124,10 @@ function sexLabel(sex: Sex | null): string {
 
 function appsList(apps: Usuario['apps']): string {
   const labels: Record<string, string> = {
-    mestre:'Admin', tarefas:'Tarefas', oradores:'Oradores', limpeza:'Limpeza', escala:'Escala TPL',
-    servicoCampo:'Serviço de Campo',
+    mestre:'Admin', tarefas:'Tarefas', oradores:'Oradores · 2ª seção', oradoresS1:'Oradores · 1ª seção', escala:'Escala TPL', quadro:'Quadro público',
   }
   return (Object.keys(apps) as Array<keyof typeof apps>)
-    .filter(k => k !== 'individual' && apps[k]).map(k => labels[k]).join(', ') || '—'
+    .filter(k => labels[k] && apps[k]).map(k => labels[k]).join(', ') || 'Quadro público'
 }
 
 function appCheck(id: string, label: string, checked: boolean): string {
@@ -253,8 +250,7 @@ function renderNavigation(): void {
 async function loadPublicRoot(): Promise<Record<string, unknown>> {
   const entries = await Promise.all([
     ['master', masterRef], ['usuarios', usuariosRef], ['tarefas', tarefasRef],
-    ['limpeza', limpezaRef], ['escala', escalaRef],
-    ['servicoCampo', servicoCampoRef],
+    ['escala', escalaRef],
     ['agendaConfig', agendaConfigRef], ['agendaDocuments', agendaDocumentsRef],
   ].map(async ([key, reference]) => {
     const snapshot = await get(reference as typeof rootRef)
@@ -263,8 +259,7 @@ async function loadPublicRoot(): Promise<Record<string, unknown>> {
   const values = Object.fromEntries(entries)
   return {
     master:values['master'], usuarios:values['usuarios'], tarefas:values['tarefas'],
-    limpeza:values['limpeza'], escala:values['escala'],
-    servicoCampo:values['servicoCampo'],
+    escala:values['escala'],
     agenda:{ config:values['agendaConfig'], documentos:values['agendaDocuments'] },
   }
 }
@@ -456,7 +451,7 @@ function renderVinculos(): void {
             <span style="font-size:.7rem;font-weight:700;color:#8A6200">Configuração</span>
           </div>
           <div style="font-size:.76rem;color:var(--ink-3);margin-top:3px">${escapeHtml(item.detail)}</div>
-          <div style="display:flex;justify-content:flex-end;margin-top:8px"><button class="btn btn-ghost" type="button" data-open-agenda-config="${item.id}" style="font-size:.76rem;padding:4px 9px">Abrir Agenda</button></div>
+          <div style="display:flex;justify-content:flex-end;margin-top:8px"><button class="btn btn-ghost" type="button" data-open-agenda-config="${item.id}" style="font-size:.76rem;padding:4px 9px">Abrir Quadro</button></div>
         </div>`).join('')}
       ${issues.length ? issues.map(item => {
         const target = moduleForLinkIssue(item.module)
@@ -654,12 +649,9 @@ async function restoreBackup(): Promise<void> {
       master:restoreCandidate['master'] ?? null,
       usuarios:restoreCandidate['usuarios'] ?? null,
       tarefas:restoreCandidate['tarefas'] ?? null,
-      limpeza:restoreCandidate['limpeza'] ?? null,
       escala:restoreCandidate['escala'] ?? null,
-      servicoCampo:restoreCandidate['servicoCampo'] ?? null,
       'agenda/config':agenda['config'] ?? null,
       'agenda/documentos':agenda['documentos'] ?? null,
-      'agenda/assinaturas':null,
     })
     restoreCandidate = null
     restoreFileName = ''
@@ -786,7 +778,6 @@ function pessoaCard(mid: string, p: MasterPessoa): string {
           <span>${roleLabel(p.role)}</span>
           <span>${sexLabel(p.sex)}</span>
           ${badge}
-          ${p.limpeza?.grupo ? `<span>G${p.limpeza.grupo}</span>` : ''}
         </div>
       </div>
       <button class="btn btn-ghost" data-edit-pessoa="${escapeHtml(mid)}"
@@ -989,7 +980,7 @@ function findMasterReferences(data: Record<string, unknown>, mid: string): strin
     else if (path.startsWith('limpeza/')) found.add('Limpeza')
     else if (path.startsWith('escala/')) found.add('Escala TPL')
     else if (path.startsWith('servicoCampo/')) found.add('Serviço de Campo')
-    else if (path.startsWith('agenda/')) found.add('Minha Agenda')
+    else if (path.startsWith('agenda/')) found.add('Quadro de Anúncios')
     else if (path.startsWith('master/config/limpeza/')) found.add('Grupos de limpeza')
     else if (!path.startsWith(`master/pessoas/${mid}/`)) found.add('Históricos ou configurações')
   })
@@ -1059,8 +1050,7 @@ function openUsuarioModal(uid: string | null): void {
   const u    = uid ? usuarios[uid] : undefined
   const identityLocked = Boolean(u?.masterId && pessoas[u.masterId])
   const apps = u?.apps ?? {
-    mestre:false, tarefas:false, oradores:false, oradoresS1:false, limpeza:false, escala:false,
-    servicoCampo:false,
+    mestre:false, tarefas:false, oradores:false, oradoresS1:false, escala:false, quadro:true,
   }
   const overlay = document.createElement('div')
   overlay.className = 'modal-overlay'
@@ -1094,9 +1084,8 @@ function openUsuarioModal(uid: string | null): void {
         ${appCheck('tarefas',     'Tarefas',      apps.tarefas)}
         ${appCheck('oradoresS1',  'Oradores · 1ª seção', apps.oradoresS1 ?? false)}
         ${appCheck('oradores',    'Oradores · 2ª seção', apps.oradores ?? false)}
-        ${appCheck('limpeza',     'Limpeza',      apps.limpeza ?? false)}
         ${appCheck('escala',      'Escala TPL',   apps.escala)}
-        ${appCheck('servicoCampo','Serviço de Campo', apps.servicoCampo ?? false)}
+        <p class="form-help">O <a href="/quadro/" target="_blank" rel="noopener">Quadro de Anúncios</a> é público e não exige conta.</p>
       </div>
       <div style="display:flex;gap:8px;margin-top:8px">
         <button id="btnCancelUsuario" class="btn btn-ghost" style="flex:1">Cancelar</button>
@@ -1126,9 +1115,9 @@ async function saveUsuario(uid: string | null, overlay: HTMLElement): Promise<vo
     (document.getElementById(`uApp_${id}`) as HTMLInputElement).checked
 
   const selectedApps = {
-    mestre: checkApp('mestre'), tarefas: checkApp('tarefas'), oradoresS1:checkApp('oradoresS1'), oradores:checkApp('oradores'), limpeza: checkApp('limpeza'),
+    mestre: checkApp('mestre'), tarefas: checkApp('tarefas'), oradoresS1:checkApp('oradoresS1'), oradores:checkApp('oradores'),
     escala: checkApp('escala'),
-    servicoCampo:checkApp('servicoCampo'), individual:true,
+    quadro:true,
   }
   const apps = selectedApps
   const usuario: Usuario = {
@@ -1189,7 +1178,7 @@ function renderConfig(): void {
 
   const secs: Array<{ id: typeof activeConfigSection; label: string }> = [
     { id: 'congregacao', label: 'Congregação' },
-    { id: 'agenda', label: 'Agenda' },
+    { id: 'agenda', label: 'Quadro de Anúncios' },
   ]
 
   mc.innerHTML = `
@@ -1261,9 +1250,8 @@ function resolveAgendaConfigIssue(): void {
 
 const AGENDA_REMINDER_MODULES: Array<{ id: AgendaReminderModule; label: string; defaults: string[] }> = [
   { id: 'tarefas', label: 'Tarefas', defaults: ['P7D', 'P1D'] },
-  { id: 'limpeza', label: 'Limpeza', defaults: ['P1D'] },
+  { id: 'oradores', label: 'Oradores · duas seções', defaults: ['P1D'] },
   { id: 'escala', label: 'Escala TPL', defaults: ['P1D'] },
-  { id: 'servicoCampo', label: 'Serviço de Campo', defaults: ['P1D'] },
   { id: 'quadro', label: 'Quadro de anúncios', defaults: [] },
 ]
 
@@ -1313,7 +1301,7 @@ function renderConfigAgenda(): void {
       </div>
       ${rows}
     </div>
-    <button id="btnSalvarAgendaConfig" class="btn btn-primary btn-full" style="margin-top:16px">Salvar configurações da Agenda</button>`
+    <button id="btnSalvarAgendaConfig" class="btn btn-primary btn-full" style="margin-top:16px">Salvar configurações do Quadro</button>`
 
   document.getElementById('btnSalvarAgendaConfig')?.addEventListener('click', () => void saveConfigAgenda())
 }
@@ -1359,13 +1347,14 @@ async function saveConfigAgenda(): Promise<void> {
       icsReminders,
     }
     editorSaved(scope)
-    toast('Configurações da Agenda salvas ✓')
+    window.dispatchEvent(new CustomEvent('quadro-updated'))
+    toast('Configurações do Quadro salvas ✓')
   } catch {
     editorError(scope)
-    toast('Erro ao salvar configurações da Agenda')
+    toast('Erro ao salvar configurações do Quadro')
   } finally {
     release()
-    setLoading('btnSalvarAgendaConfig', false, 'Salvar configurações da Agenda')
+    setLoading('btnSalvarAgendaConfig', false, 'Salvar configurações do Quadro')
   }
 }
 

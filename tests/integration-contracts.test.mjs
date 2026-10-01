@@ -31,7 +31,7 @@ test('Admin inativo ou vínculo ausente nunca habilita Tarefas',()=>{
   assert.equal(canonicalTaskPerson('p',{active:true},{}).active,false)
   assert.equal(canonicalTaskPerson('m',{active:true},{m:{name:'Central'}}).name,'Central')
 })
-for(const module of ['tarefas','limpeza','escala','servicoCampo','oradores']) {
+for(const module of ['tarefas','escala','oradores']) {
   test(module+': publicação concorrente preserva versão oficial e reabertura atômica',()=>{
     const root=fixture(),key=officialDocumentId(module,month),hash=sourceHash(root,module,month),version=publicationVersion(root,module,month)
     const document={id:key,modulo:module,origemPeriodoId:month,sourceHash:hash}
@@ -68,7 +68,7 @@ test('confirmação não muda PDF de Oradores, mas protege a versão durante pub
   assert.equal(sourceHash(root,'oradores',month),sourceHash(changed,'oradores',month))
   assert.notEqual(publicationVersion(root,'oradores',month),publicationVersion(changed,'oradores',month))
 })
-for(const module of ['tarefas','limpeza','escala','servicoCampo']) {
+for(const module of ['tarefas','escala']) {
   test(module+': edição atrasada não atravessa o bloqueio publicado',()=>{
     const root=fixture(),published=transitionPublication(root,module,month,sourceHash(root,module,month),null,{id:'pdf'})
     const path=module==='tarefas'?'tarefas/scale/periods/'+month:module==='limpeza'?'limpeza/periodos/'+month:module==='servicoCampo'?'servicoCampo/periods/'+month:'escala/tables/l/'+month
@@ -84,14 +84,14 @@ test('edição condicional e tentativa de publicar pela API genérica são prote
 })
 test('falha parcial não retira eventos; retry só lê fontes solicitadas',async()=>{
   const paths=[]
-  const read=async path=>{paths.push(path);if(path==='limpeza/periodos')throw Error('offline');return {}}
-  const result=await loadPartialAgendaRoot(['tarefas','limpeza'],read)
+  const read=async path=>{paths.push(path);if(path==='tarefas/discursos')throw Error('offline');return {}}
+  const result=await loadPartialAgendaRoot(['tarefas','oradores'],read)
   assert.deepEqual(result.completedSources,['tarefas'])
-  assert.deepEqual(result.failedSources,['limpeza'])
-  const old=[{id:'t',source:'tarefas',date:month+'-01'},{id:'l',source:'limpeza',date:month+'-02'}]
+  assert.deepEqual(result.failedSources,['oradores'])
+  const old=[{id:'t',source:'tarefas',date:month+'-01'},{id:'l',source:'oradores',date:month+'-02'}]
   assert.deepEqual(mergeAgendaSources(old,[],result.completedSources),[old[1]])
-  paths.length=0;await loadPartialAgendaRoot(['limpeza'],read)
-  assert.deepEqual(paths,['master/pessoas','limpeza/periodos'])
+  paths.length=0;await loadPartialAgendaRoot(['oradores'],read)
+  assert.deepEqual(paths.sort(),['master/pessoas','tarefas/people','tarefas/discursos'].sort())
 })
 test('TPL reconhece vínculo legado pela chave e reabertura remove evento mesmo com snapshot',()=>{
   const root=fixture();root.escala.publishedMonths={[month]:true}

@@ -1,5 +1,5 @@
 // Archived data is kept until the separate deletion proposal is approved.
-const RETIRED_ROOTS = new Set(['programacao', 'secretario', 'oradores'])
+const RETIRED_ROOTS = new Set(['programacao', 'secretario', 'oradores', 'limpeza', 'servicoCampo'])
 const RETIRED_TASK_KEYS = new Set<string>()
 const row = (value: unknown): Record<string, unknown> => value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : {}
 

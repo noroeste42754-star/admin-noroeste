@@ -6,7 +6,7 @@ const token='a'.repeat(64)
 const csrf='b'.repeat(48)
 const apps={mestre:true,tarefas:true,oradores:true,oradoresS1:true,limpeza:true,escala:true,servicoCampo:true,individual:true}
 const session={uid:'test',csrf,installationToken:token,usuario:{nome:'Responsável',ativo:true,masterId:'m1',apps}}
-const modules=['mestre','tarefas','oradores','oradoresS1','limpeza','escala','servicoCampo']
+const modules=['mestre','tarefas','oradores','oradoresS1','escala']
 const page=await browser.newPage({serviceWorkers:'block'})
 const seenHeaders=[]
 try {
@@ -33,7 +33,7 @@ try {
   await page.locator('#appShell:not(.hidden)').waitFor()
   assert.equal(await page.evaluate(()=>localStorage.getItem('noroeste_module_installation_v1')),token)
   await page.locator('#moduleInstallOffer summary').click()
-  assert.equal(await page.locator('#moduleInstallOffer a').count(),7)
+  assert.equal(await page.locator('#moduleInstallOffer a').count(),5)
   for(const module of modules){
     const path=`/modulos/${module}/`
     await page.goto(new URL(path,process.env.APP_TEST_URL).href)
@@ -51,7 +51,7 @@ try {
   }
   assert.ok(seenHeaders.length>0)
   assert.ok(seenHeaders.every(value=>value===token))
-  console.log('Instalação dos sete módulos: login inicial, acesso persistente e abertura direta confirmados.')
+  console.log('Instalação dos cinco módulos administrativos: login inicial, acesso persistente e abertura direta confirmados.')
 } finally {
   await browser.close()
 }

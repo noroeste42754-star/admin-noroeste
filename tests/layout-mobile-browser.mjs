@@ -30,7 +30,7 @@ try {
   })
   const home=()=>page.goto(process.env.APP_TEST_URL)
   const overflow=async label=>assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1),true,label+' '+width)
-  for(const module of ['mestre','tarefas','oradores','limpeza','escala','servicoCampo','individual']){
+  for(const module of ['mestre','tarefas','oradores','oradoresS1','escala']){
    await home();await page.locator('[data-menu-card="'+module+'"]').click()
    await page.waitForFunction(()=>!document.querySelector('#appContent')?.textContent?.includes('Carregando'))
    if(module==='mestre'){
@@ -58,12 +58,7 @@ try {
     await page.locator('#cancelScheduleEdit').click()
     assert.equal(await page.locator('#scheduleSearch').count(),0)
    }
-   if(module==='limpeza'){
-    await page.locator('[data-cleaning-tab="grupos"]').click()
-    assert.equal(await page.locator('[data-cleaning-panel="grupos"]').isVisible(),true)
-    assert.equal(await page.locator('[data-cleaning-panel="escala"]').isVisible(),false)
-    await page.locator('[data-cleaning-tab="escala"]').click()
-   }
+
    if(module==='escala'){
     await page.locator('[data-workspace-tab="participantes"]').first().click()
     assert.equal(await page.locator('#pList .entity-card').count(),1)
@@ -76,32 +71,13 @@ try {
     await page.locator('[data-person-confirmation="p"]').click()
     assert.equal(await page.locator('#mTarget').inputValue(),'p')
    }
-   if(module==='servicoCampo'){
-    assert.equal(await page.locator('#serviceLeaderForm').count(),0)
-    await page.locator('[data-service-edit-leader]').click()
-    assert.equal(await page.locator('#serviceLeaderForm select[name="leaderId"]').isVisible(),true)
-    await page.locator('#cancelServiceLeader').click()
-   }
-   if(module==='individual'){
-    await page.getByText(/Atualizada em/).waitFor()
-    assert.equal(await page.locator('#individualRoot > .agenda-list .agenda-personal-event').count(),1)
-    await page.locator('#agendaOtherDates summary').click()
-    await page.locator('[data-personal-view="month"]').click()
-    await page.locator('[data-personal-date="2026-10-04"]').click()
-    assert.match(await page.locator('.agenda-selected-day').innerText(),/04\/10\/2026/)
-    assert.equal(await page.locator('[data-personal-date="2026-10-04"]').getAttribute('aria-pressed'),'true')
-    assert.equal(await page.locator('#individualRoot > .agenda-list .agenda-personal-event').count(),1)
-    assert.match(await page.locator('#individualRoot > .agenda-list .agenda-event-location').innerText(),/Salão/)
-    assert.equal(await page.locator('.agenda-personal-panel').filter({has:page.locator('summary').getByText('Mais opções')}).count(),0)
-    await page.locator('[data-agenda-screen="quadro"]').click()
-    assert.equal(await page.locator('[data-agenda-panel="moduleDocuments"]').getAttribute('open'),'')
-    await page.locator('[data-agenda-screen="agenda"]').click()
-   }
+
+
    await overflow(module)
    if(width===390)await page.screenshot({path:new URL('../output/layout-mobile/'+module+'-390.png',import.meta.url).pathname.replace(/^\/([A-Z]:)/i,'$1'),fullPage:true})
   }
   assert.deepEqual(errors,[]);assert.deepEqual(writes,[])
-  console.log('Layout '+width+'px: sete módulos, leitura/edição e acessibilidade OK')
+  console.log('Layout '+width+'px: cinco módulos administrativos, leitura/edição e acessibilidade OK')
   await page.close()
  }
 }finally{await browser.close()}

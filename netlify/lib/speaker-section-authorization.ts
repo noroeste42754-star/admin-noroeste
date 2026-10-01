@@ -5,7 +5,7 @@ type Row = Record<string, unknown>
 const row = (value: unknown): Row => value && typeof value === 'object' && !Array.isArray(value) ? value as Row : {}
 const equal = (a: unknown, b: unknown): boolean => JSON.stringify(a ?? null) === JSON.stringify(b ?? null)
 
-function sectionFor(collection: string, value: unknown, speakers: Row, strict = true): Section | 'shared' | 'invalid' {
+function sectionFor(collection: string, value: unknown, speakers: Row, strict = true, congregations: Row = {}): Section | 'shared' | 'invalid' {
   const item = row(value)
   if (!Object.keys(item).length) return 'invalid'
   if (collection === 'oradores' || collection === 'congregacoes') {
@@ -22,6 +22,10 @@ function sectionFor(collection: string, value: unknown, speakers: Row, strict = 
   const secondary = row(speakers[String(item['oradorSecundarioId'] ?? '')])
   if (strict && item['oradorSecundarioId'] && !Object.keys(secondary).length) return 'invalid'
   if (strict && secondary['tipo'] === 'local' && (secondary['secao'] ?? 's2') !== section) return 'invalid'
+  if (strict && item['localCongregacaoId']) {
+    const local=row(congregations[String(item['localCongregacaoId'])])
+    if (local['tipo'] !== 'local' || (local['secao'] ?? 's2') !== section) return 'invalid'
+  }
   return section
 }
 
@@ -55,7 +59,7 @@ export function canMutateSpeakerSection(current: unknown, path: string, method: 
     }
   } else return false
   return changes.every(([before, after]) => {
-    const beforeSection=sectionFor(collection!, before, speakers, false),afterSection=sectionFor(collection!, after, speakers, true)
+    const beforeSection=sectionFor(collection!, before, speakers, false),afterSection=sectionFor(collection!, after, speakers, true, row(talks['congregacoes']))
     if (before && after && ['oradores','congregacoes'].includes(collection!) && (beforeSection==='shared')!==(afterSection==='shared')) return false
     return [beforeSection, afterSection]
     .filter((_, index) => (index === 0 ? before : after) !== null && (index === 0 ? before : after) !== undefined)

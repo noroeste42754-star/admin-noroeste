@@ -12,7 +12,7 @@ test('payload público da Agenda remove caminhos internos e URLs inseguras', () 
   assert.equal(documents.ok.storagePath, undefined)
   assert.equal(documents.speakers.modulo, 'oradores')
   assert.equal(documents.bad, undefined)
-  assert.equal(documents.legacyAdmin, undefined)
+  assert.equal(documents.legacyAdmin.modulo, 'admin')
   assert.deepEqual(publicAgendaConfig({ quadroWhatsAppLink:'javascript:alert(1)', outrosAnunciosDriveUrl:'https://drive.google.com/drive/folders/pasta', moduleWhatsApp:{ tarefas:{ groupLink:'https://chat.whatsapp.com/example', meetingText:'Olá' }, oradores:{ documentText:'Oradores publicados' } } }), { outrosAnunciosDriveUrl:'https://drive.google.com/drive/folders/pasta', moduleWhatsApp:{ tarefas:{ groupLink:'https://chat.whatsapp.com/example', meetingText:'Olá' }, oradores:{ documentText:'Oradores publicados' } } })
 })
 

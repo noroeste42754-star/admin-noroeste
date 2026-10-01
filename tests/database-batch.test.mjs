@@ -51,14 +51,14 @@ test('erro individual e falha de rede nao viram dados vazios ou promessas penden
 })
 
 test('lote verifica cada permissao, preserva ordem e isola falhas', async () => {
-  const paths = ['master/pessoas', 'secretario/relatorios', 'limpeza']
+  const paths = ['master/pessoas', 'limpeza', 'tarefas']
   const seen = []
-  const results = await readBatch(JSON.stringify(paths), { limpeza:true }, async path => {
+  const results = await readBatch(JSON.stringify(paths), { tarefas:true }, async path => {
     seen.push(path)
-    if (path === 'limpeza') throw new Error('offline')
+    if (path === 'tarefas') throw new Error('offline')
     return { pessoa:'teste' }
   })
-  assert.deepEqual(seen, ['master/pessoas', 'limpeza'])
+  assert.deepEqual(seen, ['master/pessoas', 'tarefas'])
   assert.deepEqual(results[0], { value:{ pessoa:'teste' } })
   assert.equal(results[1].status, 403)
   assert.equal(results[2].status, 503)

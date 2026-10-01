@@ -6,9 +6,8 @@ import { pdfHasExpired } from '../../src/modules/pdf-expiry.ts'
 const MAX_PDF_BYTES = 4 * 1024 * 1024
 const PDF_STORE = 'admin-noroeste-pdfs'
 const MODULES: Record<string, keyof AppPermissions> = {
-  tarefas:'tarefas', limpeza:'limpeza', escala:'escala',
+  tarefas:'tarefas', escala:'escala',
   oradores:'oradores',
-  servicoCampo:'servicoCampo',
 }
 
 export function validStoragePath(path: string): boolean {
@@ -23,7 +22,7 @@ export function canManageStoragePath(path: string, apps: AppPermissions): boolea
 }
 
 export function canReadPublicStoragePath(path: string): boolean {
-  return /^agenda\/documentos\/(admin|modulos\/(tarefas|oradores|limpeza|escala|servicoCampo))\/[A-Za-z0-9/_.-]+\.pdf$/.test(path)
+  return /^agenda\/documentos\/(admin|modulos\/(tarefas|oradores|escala))\/[A-Za-z0-9/_.-]+\.pdf$/.test(path)
 }
 
 function decodePdf(value: unknown): Uint8Array | null {

@@ -8,7 +8,7 @@ import { parseAgendaUiPreferences } from '../src/modules/individual-preferences.
 
 test('raízes legadas continuam retiradas, mas tarefas/discursos voltou a ser ativo', () => {
   const apps = { mestre:true }
-  for (const path of ['programacao', 'secretario/relatorios', 'oradores']) {
+  for (const path of ['programacao', 'secretario/relatorios', 'oradores', 'limpeza', 'servicoCampo']) {
     assert.equal(canAccessData(path, apps, false), false)
     assert.equal(canAccessData(path, apps, true), false)
     assert.equal(canMutateData('', 'PATCH', { [path]:null }, apps), false)
@@ -21,7 +21,7 @@ test('raízes legadas continuam retiradas, mas tarefas/discursos voltou a ser at
 test('leituras da Agenda nao consultam mais os modulos retirados', async () => {
   const calls = []
   await loadAgendaRoot(async path => { calls.push(path); return null })
-  assert.ok(calls.includes('limpeza/periodos'))
+  assert.equal(calls.some(path => /limpeza|servicoCampo/.test(path)), false)
   assert.ok(calls.includes('tarefas/scale/periods'))
   assert.ok(calls.includes('tarefas/discursos'))
   assert.equal(calls.some(path => /secretario|programacao/.test(path)), false)

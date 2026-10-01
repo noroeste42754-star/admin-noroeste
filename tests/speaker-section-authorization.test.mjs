@@ -12,6 +12,17 @@ const root={tarefas:{discursos:{
 const s1={mestre:false,oradoresS1:true,oradores:false,tarefas:false}
 const s2={mestre:false,oradoresS1:false,oradores:true,tarefas:false}
 
+test('discurso local só vincula congregação local existente da própria seção',()=>{
+  for(const [apps,id,own,other] of [[s1,'one','local1','local2'],[s2,'two','local2','local1']]) {
+    const path='tarefas/discursos/programacao/'+id,current=root.tarefas.discursos.programacao[id]
+    assert.equal(canMutateSpeakerSection(root,path,'PUT',{...current,localCongregacaoId:own},apps),true)
+    for(const bad of [other,'inexistente'])assert.equal(canMutateSpeakerSection(root,path,'PUT',{...current,localCongregacaoId:bad},apps),false)
+    const shared=structuredClone(root);shared.tarefas.discursos.congregacoes.visitor={tipo:'visitante'}
+    assert.equal(canMutateSpeakerSection(shared,path,'PATCH',{localCongregacaoId:'visitor'},apps),false)
+    assert.equal(canMutateSpeakerSection(root,'tarefas/discursos/programacao','PATCH',{[id]:{...current,localCongregacaoId:other}},apps),false)
+  }
+})
+
 test('permissão antiga de Oradores permanece S2; nova permissão abre S1 e PDF conjunto',()=>{
   assert.equal(canAccessData('tarefas/discursos',s1,false),true)
   assert.equal(canAccessData('tarefas/discursos',s1,true),true)

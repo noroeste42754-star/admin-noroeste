@@ -1,6 +1,6 @@
-const BASE = '/agenda/'
-const PREFIX = 'noroeste-agenda-'
-const CACHE = PREFIX + 'v6-public-quadro'
+const BASE = '/quadro/'
+const PREFIX = 'noroeste-quadro-'
+const CACHE = PREFIX + 'v1'
 const SHELL = [BASE, BASE + 'manifest.json', '/icon-192.png', '/icon-512.png']
 const cacheableAsset = path => path.startsWith('/assets/') || SHELL.includes(path)
 

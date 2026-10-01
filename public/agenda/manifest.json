@@ -1,7 +1,7 @@
 {
-  "name": "Minha Agenda - Noroeste",
-  "short_name": "Minha Agenda",
-  "description": "Agenda pessoal da Congregacao Noroeste",
+  "name": "Quadro de Anúncios - Noroeste",
+  "short_name": "Quadro Noroeste",
+  "description": "Programação geral, anúncios e PDFs publicados",
   "start_url": "/agenda/",
   "scope": "/agenda/",
   "display": "standalone",

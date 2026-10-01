@@ -1,4 +1,4 @@
-const CACHE = 'noroeste-admin-v6'
+const CACHE = 'noroeste-admin-v7'
 const ASSETS = ['/', '/index.html'] // vite adiciona o resto no build
 
 const cacheableAsset = path => path.startsWith('/assets/') || ['/manifest.json', '/icon-192.png', '/icon-512.png'].includes(path)

@@ -23,7 +23,7 @@ test('permissão de módulo não publica PDF em nome de outro módulo', () => {
 
 test('leitura pública inclui documentos da Agenda, mas não templates do Secretário', () => {
   assert.equal(canReadPublicStoragePath('agenda/documentos/admin/aviso.pdf'), true)
-  assert.equal(canReadPublicStoragePath('agenda/documentos/modulos/limpeza/2026-09.pdf'), true)
+  assert.equal(canReadPublicStoragePath('agenda/documentos/modulos/limpeza/2026-09.pdf'), false)
   assert.equal(canReadPublicStoragePath('secretario/templates/s21.pdf'), false)
   assert.equal(canReadPublicStoragePath('agenda/documentos/modulos/secretario/s21.pdf'), false)
 })
@@ -54,7 +54,7 @@ async function pdf(pages) {
   return doc.save()
 }
 
-for (const module of ['tarefas', 'oradores', 'limpeza', 'escala', 'servicoCampo']) {
+for (const module of ['tarefas', 'oradores', 'escala']) {
   test(`PDF de ${module}: upload, download exato, substituicao e remocao`, async () => {
     const store = memoryStorage()
     const path = `agenda/documentos/modulos/${module}/2026-09.pdf`
@@ -126,7 +126,7 @@ test('falha de gravacao nao anuncia sucesso e permite repetir a substituicao', a
 })
 
 test('falha de remocao nao anuncia sucesso e preserva o PDF para nova tentativa', async () => {
-  const store = memoryStorage(), path = 'agenda/documentos/modulos/limpeza/2026-09.pdf'
+  const store = memoryStorage(), path = 'agenda/documentos/modulos/escala/2026-09.pdf'
   assert.equal((await storageFileResponse(storageRequest('POST', path, await pdf(1)), () => store, session)).status, 200)
   const failing = { ...store, async delete() { throw new Error('Simulated delete failure') } }
   assert.equal((await storageFileResponse(storageRequest('DELETE', path), () => failing, session)).status, 503)

@@ -6,12 +6,34 @@
   directory = "netlify/functions"
 
 [[redirects]]
+  from   = "/modulos/limpeza/*"
+  to     = "/quadro/"
+  status = 301
+  force  = true
+
+[[redirects]]
+  from   = "/modulos/servicoCampo/*"
+  to     = "/quadro/"
+  status = 301
+  force  = true
+
+[[redirects]]
   from   = "/*"
   to     = "/index.html"
   status = 200
 
 [[headers]]
   for = "/sw.js"
+  [headers.values]
+    Cache-Control = "no-cache"
+
+[[headers]]
+  for = "/quadro/sw.js"
+  [headers.values]
+    Cache-Control = "no-cache"
+
+[[headers]]
+  for = "/agenda/sw.js"
   [headers.values]
     Cache-Control = "no-cache"
 

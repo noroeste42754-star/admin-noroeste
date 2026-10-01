@@ -15,38 +15,36 @@ export function canAccessData(path: string, apps: AppPermissions, write: boolean
   if (isRetiredPath(path) || PRIVATE_ROOTS.has(root ?? '')) return false
   if (apps.mestre) return true
   if (!root) return false
-  if (root === 'master') return !write && (second === 'pessoas' || second === 'config')
+  if (root === 'master') return !write && (second === 'pessoas' || second === 'config') && Boolean(apps.tarefas || apps.escala || apps.oradores || apps.oradoresS1)
   if (root === 'usuarios') return false
   if (root === 'tarefas') {
     if (second === 'events') return apps.oradores === true || apps.oradoresS1 === true || (!write && apps.tarefas === true)
     if (second === 'discursos') return apps.oradores === true || apps.oradoresS1 === true || (!write && apps.tarefas === true)
-    if (second === 'planning' || second === 'people') return apps.tarefas === true || (!write && (apps.oradores === true || apps.oradoresS1 === true || apps.limpeza === true))
+    if (second === 'planning' || second === 'people') return apps.tarefas === true || (!write && (apps.oradores === true || apps.oradoresS1 === true))
     if (!write && (apps.oradores === true || apps.oradoresS1 === true) && second === 'scale' && third === 'periods') return true
     if (apps.tarefas === true) return true
-    return !write && apps.limpeza === true && second === 'planning'
+    return false
   }
-  if (root === 'limpeza') return apps.limpeza === true
   if (root === 'escala') return apps.escala === true
-  if (root === 'servicoCampo') return apps.servicoCampo === true
   if (root === 'agenda') {
+    if (!apps.tarefas && !apps.oradores && !apps.oradoresS1 && !apps.escala) return false
     if (second === 'config') {
       if (!write) return true
       const messagePermissions: Record<string, keyof AppPermissions> = {
-        tarefas:'tarefas', limpeza:'limpeza', escala:'escala',
+        tarefas:'tarefas', escala:'escala',
         oradores:'oradores',
         oradoresS1:'oradoresS1',
-        servicoCampo:'servicoCampo',
       }
       const permission = fourth ? messagePermissions[fourth] : undefined
       return third === 'moduleWhatsApp' && Boolean(permission && apps[permission])
     }
-    if (second === 'documentos') return !write || Boolean(apps.tarefas || apps.oradores || apps.oradoresS1 || apps.limpeza || apps.escala || apps.servicoCampo)
+    if (second === 'documentos') return !write || Boolean(apps.tarefas || apps.oradores || apps.oradoresS1 || apps.escala)
   }
   return false
 }
 
 const DOCUMENT_PERMISSIONS: Record<string, keyof AppPermissions> = {
-  tarefas:'tarefas', oradores:'oradores', limpeza:'limpeza', escala:'escala', servicoCampo:'servicoCampo',
+  tarefas:'tarefas', oradores:'oradores', escala:'escala',
 }
 
 function documentModule(id: string, value: unknown): string {

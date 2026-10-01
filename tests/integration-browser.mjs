@@ -38,16 +38,16 @@ try {
         return route.fulfill({json:{url:url.origin+'/.netlify/functions/storage-file?path='+encodeURIComponent(b.path)}})
       }
       if(endpoint==='agenda-device')return route.fulfill({json:request.method()==='GET'?{people:{m:{name:'Ana',active:true}},masterId:''}:{masterId:'m'}})
-      if(endpoint==='agenda-data') {
+      if(endpoint==='quadro-data') {
         const retry=url.searchParams.get('sources')!==null
-        return route.fulfill({json:{masterId:'m',person:{name:'Ana',active:true},events:[],announcements:[],agenda:{},completedSources:retry?['limpeza']:['tarefas','oradores','escala','servicoCampo','quadro'],failedSources:retry?[]:['limpeza']}})
+        return route.fulfill({json:{events:[],notices:[],agenda:{config:{},documentos:{}},completedSources:retry?['escala']:['tarefas','oradores','geral','quadro'],failedSources:retry?[]:['escala']}})
       }
       return route.fulfill({json:{}})
     })
     await page.route('**/__integration',route=>route.fulfill({contentType:'text/html',body:'<html><body><div id="status"></div></body></html>'}))
     const origin=process.env.APP_TEST_URL||'http://127.0.0.1:5191/'
     await page.goto(new URL('__integration',origin).href)
-    for(const module of ['tarefas','limpeza','escala','servicoCampo','oradores']) {
+    for(const module of ['tarefas','escala','oradores']) {
       await page.evaluate(async({module,month,root})=>{
         const {publishModulePeriod,renderPublicationStatus}=await import('/src/modules/module-publication.ts')
         const {publicationPeriod}=await import('/src/modules/publication-contract.ts')
@@ -56,7 +56,7 @@ try {
       },{module,month,root})
       assert.match(await page.locator('#status').innerText(),/Publicado e atualizado/)
     }
-    assert.equal(uploads.length,5)
+    assert.equal(uploads.length,3)
     const beforeDownloadRequests=requests.length
     const download=page.waitForEvent('download')
     await page.evaluate(async({month,root})=>{
@@ -100,18 +100,15 @@ try {
     },{month,root})
     assert.equal(failed,true)
     assert.deepEqual(root.agenda.documentos,before)
-    assert.equal(new Set(uploads).size,8)
+    assert.equal(new Set(uploads).size,6)
     await page.goto(new URL('agenda/',origin).href)
-    await page.locator('#agendaPerson').waitFor()
-    await page.locator('#agendaPerson').selectOption('m')
-    await page.locator('#agendaContinue').click()
-    await page.locator('[data-sync-failure]').waitFor()
-    assert.match(await page.locator('[data-sync-failure]').innerText(),/Limpeza/)
-    await page.locator('[data-sync-failure] button').click()
-    await page.locator('[data-sync-failure]').waitFor({state:'detached'})
-    assert.equal(requests.filter(r=>r.endpoint==='agenda-data').at(-1).sources,'limpeza')
+    await page.locator('#quadroRetry').waitFor()
+    assert.match(await page.locator('[role="status"]').first().innerText(),/Escala TPL/)
+    await page.locator('#quadroRetry').click()
+    await page.locator('#quadroRetry').waitFor({state:'detached'})
+    assert.equal(requests.filter(r=>r.endpoint==='quadro-data').at(-1).sources,'escala')
     assert.deepEqual(errors,[])
-    console.log('Integração '+width+'px: cinco PDFs reais, publicação, conflito, seleção e retry parcial OK')
+    console.log('Integração '+width+'px: três PDFs reais, publicação, conflito, Quadro anônimo e retry parcial OK')
     await page.close()
   }
 }finally{await browser.close()}

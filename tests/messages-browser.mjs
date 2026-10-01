@@ -32,7 +32,7 @@ try{
     await page.getByText('Mensagem das designações do dia',{exact:true}).click()
     await page.locator('#taskSendDay').click()
     const day=await page.locator('#taskMessagePreview textarea').inputValue()
-    assert.match(day,/🪑 Presidente: Ana/);assert.match(day,/🧹 Limpeza: Grupo Azul/)
+    assert.match(day,/🪑 Presidente: Ana/);assert.doesNotMatch(day,/Limpeza/)
     await page.locator('#taskMessagePreview [data-close]').click()
     await page.locator('[data-workspace-tab="participantes"]').click()
     await page.locator('[data-message-task-person="p"]').click()

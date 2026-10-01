@@ -5,13 +5,13 @@ import type { AgendaEvent, AgendaSource, AgendaStatus, AnnouncementEvent } from 
 const SOURCES = new Set<AgendaSource>(['tarefas', 'oradores', 'limpeza', 'escala', 'servicoCampo'])
 const STATUSES = new Set<AgendaStatus>(['futuro', 'confirmacao-pendente', 'alterado', 'realizado'])
 const REMINDER_MODULES = new Set<AgendaReminderModule>([...SOURCES, 'oradores', 'quadro'])
-const DOCUMENT_MODULES = new Set(['tarefas', 'oradores', 'limpeza', 'escala', 'servicoCampo'])
+const DOCUMENT_MODULES = new Set(['tarefas', 'oradores', 'escala', 'admin'])
 const reminderPattern = /^P(?:\d+D)?(?:T\d+[HM])?$/
 
 const text = (value: unknown, maximum: number): string => typeof value === 'string' ? value.trim().slice(0, maximum) : ''
 const httpsUrl = (value: unknown): string => {
   const candidate = text(value, 2_000)
-  try { return new URL(candidate).protocol === 'https:' ? candidate : '' }
+  try { const url=new URL(candidate); return url.protocol === 'https:' && !url.username && !url.password ? candidate : '' }
   catch { return '' }
 }
 

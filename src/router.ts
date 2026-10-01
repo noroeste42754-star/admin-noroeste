@@ -14,24 +14,25 @@ export const MODULE_META: Record<
   oradores:    { label: 'Oradores · 2ª seção', desc: 'Discursos locais e saídas', icon: '🎙️', color: '#72520A' },
   oradoresS1:  { label: 'Oradores · 1ª seção', desc: 'Discursos locais e saídas', icon: '🎙️', color: '#72520A' },
   servicoCampo:{ label: 'Serviço de Campo', desc: 'Saídas, dirigentes e locais', icon: '⌖', color: '#8A5A00' },
-  individual:  { label: 'Minha agenda',  desc: 'Suas designações e compromissos', icon: '✓', color: '#006EB6' },
+  individual:  { label: 'Quadro de Anúncios', desc: 'Programação geral e PDFs', icon: '📌', color: '#006EB6' },
+  quadro:      { label: 'Quadro de Anúncios', desc: 'Programação geral, avisos e PDFs', icon: '📌', color: '#006EB6' },
 }
 
 const MODULES_ORDER: ModuleName[] = [
-  'mestre', 'servicoCampo', 'tarefas', 'oradoresS1', 'oradores', 'limpeza', 'escala', 'individual',
+  'mestre', 'escala', 'tarefas', 'oradoresS1', 'oradores', 'quadro',
 ]
 
-export const INSTALLABLE_MODULES: ModuleName[] = MODULES_ORDER.filter(module => module !== 'individual')
+export const INSTALLABLE_MODULES: ModuleName[] = MODULES_ORDER.filter(module => module !== 'quadro')
 
 export function moduleFromPath(pathname: string): ModuleName | null {
-  const match=pathname.match(/^\/modulos\/(mestre|tarefas|oradoresS1|oradores|limpeza|escala|servicoCampo)\/?$/)
+  const match=pathname.match(/^\/modulos\/(mestre|tarefas|oradoresS1|oradores|escala)\/?$/)
   return match ? match[1] as ModuleName : null
 }
 
 export function accessibleModules(usuario: import('./types').Usuario): ModuleName[] {
   return usuario.apps.mestre
     ? MODULES_ORDER
-    : MODULES_ORDER.filter(module => usuario.apps[module] === true || (module === 'individual' && Boolean(usuario.masterId)))
+    : MODULES_ORDER.filter(module => module === 'quadro' || usuario.apps[module] === true)
 }
 
 // ─── Lazy loaders ───────────────────────────────────────────────────────────
@@ -44,12 +45,13 @@ async function loadModule(
   const loaders: Record<ModuleName, () => Promise<{ default: (ctx: AppContext) => void }>> = {
     mestre:      () => import('./modules/mestre'),
     tarefas:     () => import('./modules/tarefas'),
-    limpeza:     () => import('./modules/limpeza'),
+    limpeza:     () => import('./modules/quadro'),
     escala:      () => import('./modules/escala'),
     oradores:    () => import('./modules/oradores'),
     oradoresS1:  () => import('./modules/oradores'),
-    servicoCampo:() => import('./modules/servico-campo'),
-    individual:  () => import('./modules/individual'),
+    servicoCampo:() => import('./modules/quadro'),
+    individual:  () => import('./modules/quadro'),
+    quadro:      () => import('./modules/quadro'),
   }
   const mod = await loaders[name]()
   if (current()) mod.default(ctx)
@@ -133,8 +135,9 @@ export function initRouter(uid: string, usuario: import('./types').Usuario): voi
     return
   }
 
-  if (accessList.length === 1) {
-    void navigateTo(accessList[0])
+  const managedModules=accessList.filter(module=>module!=='quadro')
+  if (managedModules.length === 1 || accessList.length === 1) {
+    void navigateTo(managedModules[0]??accessList[0])
     return
   }
 

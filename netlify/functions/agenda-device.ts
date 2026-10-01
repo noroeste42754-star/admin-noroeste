@@ -46,4 +46,6 @@ export async function agendaDeviceResponse(request: Request, resolveSession = de
   return json(405, { error:'Método não permitido.' })
 }
 
-export default (request: Request): Promise<Response> => agendaDeviceResponse(request)
+// Kept only as an offline migration test helper; deployed pairing is retired.
+import { retiredAgendaResponse } from '../lib/retired-agenda.ts'
+export default async (): Promise<Response> => retiredAgendaResponse()

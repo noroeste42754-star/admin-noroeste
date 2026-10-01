@@ -80,7 +80,7 @@ export function renewAppCookie(session:AppSession):string {
 function safeUser(user: Usuario): SafeUser {
   return {
     nome:String(user.nome ?? ''), senha:'', ativo:user.ativo === true,
-    apps:Object.fromEntries(['mestre', 'tarefas', 'oradores', 'oradoresS1', 'limpeza', 'escala', 'servicoCampo', 'individual'].map(key => [key, user.apps?.[key as keyof AppPermissions] === true])) as unknown as AppPermissions,
+    apps:{...Object.fromEntries(['mestre', 'tarefas', 'oradores', 'oradoresS1', 'escala'].map(key => [key, user.apps?.[key as keyof AppPermissions] === true])),quadro:true} as unknown as AppPermissions,
     ...(user.masterId ? { masterId:user.masterId } : {}),
   }
 }
