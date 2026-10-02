@@ -2,6 +2,7 @@ import { localSlots, participantName, type EscalaLocal, type EscalaParticipant, 
 import { dayLabel, hasScaleAssignments, monthLabel, printRowsForLocal } from './escala-output.ts'
 import { PDFDocument, StandardFonts, rgb, type PDFFont, type PDFPage } from 'pdf-lib/cjs/index.js'
 import { downloadPdf } from '../ui/pdf-download.ts'
+import { fitPdfFont } from '../ui/pdf-text-fit.ts'
 import { A4_LANDSCAPE, PDF_INK, PDF_LINE, drawPublicPdfHeader } from '../ui/public-pdf-layout.ts'
 
 const esc = (value: unknown) => String(value ?? '').replace(/[&<>'"]/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' })[char]!)
@@ -124,6 +125,9 @@ export async function createScaleSchedulePdf(input: ScalePrintInput): Promise<Sc
     const page = pdf.addPage(A4_LANDSCAPE)
     const y = drawScaleHeader(page, regular, bold, String(local.name ?? localId), input.month)
     let fontSize = Math.min(11, Math.max(7, requested))
+    for (const row of rows) for (const names of row.cells) for (const name of names) {
+      fontSize = fitPdfFont(regular, name, 720 / Math.max(1, slots.length) - 8, fontSize)
+    }
     const height = () => rows.reduce((sum, row) => sum + rowHeight(row, regular, fontSize, slots.length), 22)
     while (height() > y - 30 && fontSize > 6) fontSize = Math.max(6, fontSize - .25)
     if (height() > y - 30) throw new Error(`A escala ${local.name ?? localId} não cabe em uma folha A4 com nomes legíveis. Reduza os horários ou o período.`)

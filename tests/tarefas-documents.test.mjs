@@ -1,8 +1,18 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { PDFDocument } from 'pdf-lib/cjs/index.js'
+import { PDFDocument, StandardFonts } from 'pdf-lib/cjs/index.js'
 import { createTaskSchedulePdf, taskPrintHtml } from '../src/modules/tarefas-documents.ts'
 import { TASK_ROLES } from '../src/modules/tarefas-domain.ts'
+import { fitPdfFont } from '../src/ui/pdf-text-fit.ts'
+
+test('fonte se ajusta à largura antes de quebrar nomes compostos',async()=>{
+  const pdf=await PDFDocument.create(),font=await pdf.embedFont(StandardFonts.Helvetica)
+  const name='Alexandro Carvalho',width=(595.28-68-75)/4-8
+  const result=await createTaskSchedulePdf([{date:'2026-10-03',type:'weekend',assignments:{presidente:'p'}}],'Noroeste',{p:{name}},14)
+  assert.ok(font.widthOfTextAtSize(name,result.effectiveFontSize)<=width)
+  assert.ok(result.effectiveFontSize>=9)
+  assert.equal(fitPdfFont(font,'Nome '.repeat(100),width,12),6,'conteúdo excepcional não vira letra ilegível')
+})
 
 test('impressão identifica as duas seções e não apresenta reunião única como segunda seção', () => {
   for (const [type, label] of [['weekend_s1', '1ª seção'], ['weekend', '2ª seção'], ['weekend_merged', 'Reunião única']]) {

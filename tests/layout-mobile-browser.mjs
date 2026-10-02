@@ -67,6 +67,7 @@ try {
     assert.equal(await page.locator('#aPerson').inputValue(),'p')
     assert.ok(await page.locator('[data-avail]').first().getAttribute('aria-label'))
     if(width<=560)assert.equal(await page.locator('.availability-table').evaluate(el=>el.scrollWidth<=el.clientWidth+1),true)
+    await page.locator('#closePersonAvailability').click()
     await page.locator('[data-workspace-tab="participantes"]').first().click()
     await page.locator('[data-person-confirmation="p"]').click()
     assert.equal(await page.locator('#mTarget').inputValue(),'p')

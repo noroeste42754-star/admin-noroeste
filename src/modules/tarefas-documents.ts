@@ -2,6 +2,7 @@ import { TASK_ROLES, TASK_ROLE_LABELS, assignmentForRole, personName, roleApplie
 import { formatTaskDate, paginateItems, rowsPerPrintPage } from './tarefas-output.ts'
 import { PDFDocument, StandardFonts, rgb, type PDFFont } from 'pdf-lib/cjs/index.js'
 import { downloadPdf } from '../ui/pdf-download.ts'
+import { fitPdfFont } from '../ui/pdf-text-fit.ts'
 import { A4_PORTRAIT, PDF_INK, PDF_LINE, drawPublicPdfHeader } from '../ui/public-pdf-layout.ts'
 
 const MIN_PT = 8, MAX_PT = 22
@@ -78,6 +79,7 @@ export async function createTaskSchedulePdf(meetings: TaskMeeting[], congregatio
   const page = pdf.addPage(A4_PORTRAIT)
   const period = ordered.length ? `${formatTaskDate(ordered[0]?.date)} - ${formatTaskDate(ordered[ordered.length - 1]?.date)}` : 'Sem período'
   let y = drawPublicPdfHeader(page, bold, regular, { title:'Escala de Tarefas', congregation, period, margin:PDF_MARGIN, compact:true })
+  page.drawText('S1 = 1ª seção   ·   S2 = 2ª seção   ·   M = Meio de semana', { x:PDF_MARGIN, y:18, size:8, font:regular, color:PDF_INK })
   const blocks: Array<{ title:string; roles:typeof TASK_ROLES[number][] }> = [
     { title:'Áudio e Vídeo', roles:['operador1', 'operador2', 'mic1', 'mic2'] },
     { title:'Presidente, leitor e indicadores', roles:['presidente', 'leitor', 'entrada', 'auditorio'] },
@@ -93,6 +95,9 @@ export async function createTaskSchedulePdf(meetings: TaskMeeting[], congregatio
     }),
   }))
   let effectiveFontSize = Math.min(12, Math.max(7, Number(preferredFontPt) || 10))
+  for (const meeting of ordered) for (const role of TASK_ROLES) {
+    if (roleApplies(role, meeting)) effectiveFontSize = fitPdfFont(regular, assignmentName(assignmentForRole(meeting, role), people), cellWidth - 8, effectiveFontSize)
+  }
   let prepared = prepare(effectiveFontSize)
   const height = () => prepared.reduce((sum, block) => sum + 37 + block.rows.reduce((total, row) => total + row.height, 0), 0)
   while (height() > y - PDF_MARGIN && effectiveFontSize > 6) {
@@ -117,7 +122,7 @@ export async function createTaskSchedulePdf(meetings: TaskMeeting[], congregatio
     page.drawText(block.title, { x:PDF_MARGIN, y:y - 9, size:9, font:bold, color:PDF_INK })
     y -= 15
     page.drawRectangle({ x:PDF_MARGIN, y:y - 18, width, height:18, color:PDF_INK })
-    ;['Data/Sessão', ...block.roles.map(role => TASK_ROLE_LABELS[role])].forEach((label, index) => {
+    ;['Data/Seção', ...block.roles.map(role => TASK_ROLE_LABELS[role])].forEach((label, index) => {
       const x = PDF_MARGIN + (index ? dateWidth + (index - 1) * cellWidth : 0)
       page.drawText(label, { x:x + 4, y:y - 12, size:8, font:bold, color:rgb(1, 1, 1) })
     })

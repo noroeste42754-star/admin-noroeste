@@ -21,22 +21,15 @@ try {
     })
     await page.goto(process.env.APP_TEST_URL || 'http://127.0.0.1:5190/')
     for (let repeat = 0; repeat < 2; repeat++) {
-      for (const module of ['limpeza', 'servicoCampo', 'tarefas', 'escala', 'mestre', 'individual']) {
+      for (const module of ['tarefas', 'escala', 'mestre', 'oradoresS1', 'oradores']) {
         await page.locator(`[data-menu-card="${module}"]`).click()
-        if (module === 'limpeza') await page.locator('#btnGerarEscalaLimpeza').waitFor({ state:'attached' })
-        if (module === 'individual') await page.getByRole('heading', { name:'Próximas designações' }).waitFor()
-        if (module === 'servicoCampo') {
-          await page.locator('[data-workspace-tab="configuracao"]').click()
-          await page.locator('#serviceTemplateForm').waitFor({ state:'attached' })
-          await page.locator('#btnBack').click()
-          await page.locator('#serviceMonth').waitFor({ state:'attached' })
-        }
-        if (module === 'tarefas' || module === 'escala' || module === 'mestre') {
-          await page.locator('.workspace-tabs [data-workspace-tab="'+(module === 'mestre' ? 'usuarios' : 'participantes')+'"]').click()
+        {
+          await page.locator('.workspace-tabs [data-workspace-tab="'+(module === 'mestre' ? 'usuarios' : module.startsWith('oradores')?'oradores':'participantes')+'"]').click()
           await page.waitForFunction(() => !document.querySelector('#appContent')?.textContent?.includes('Carregando dados'))
           if (!repeat) {
-            const tabs = module === 'mestre' ? ['config','vinculos','dados'] : module === 'escala' ? ['disponibilidade','mensagens','config','locais','escalaAtual','pendencias'] : ['pendencias','config']
+            const tabs = module === 'mestre' ? ['config','vinculos','dados'] : module === 'escala' ? ['config','locais','escalaAtual','pendencias'] : module.startsWith('oradores')?['congregacoes','temas','eventos']:['escala','config']
             for (const tab of tabs) {
+              if(!await page.locator(`[data-workspace-tab="${tab}"]`).count())await page.locator('[data-workspace-tab="config"]').first().click()
               await page.locator(`[data-workspace-tab="${tab}"]`).first().click()
               await page.waitForFunction(() => !document.querySelector('#appContent')?.textContent?.includes('Carregando dados'))
               assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1), true, `${module}/${tab}: no overflow`)
@@ -59,7 +52,7 @@ try {
       }
     }
     assert.deepEqual(errors, [])
-    console.log(`Back navigation passed: ${width}px, all six modules, two cycles without reload`)
+    console.log(`Voltar: ${width}px, cinco módulos administrativos, dois ciclos sem recarregar OK`)
     await page.close()
   }
 } finally { await browser.close() }

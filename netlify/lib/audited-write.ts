@@ -3,6 +3,7 @@ import { guardedModulePath, guardedModuleWrite } from './published-write.ts'
 import { deleteUnreferencedMasterPerson } from './master-person-delete.ts'
 import { activeData,preserveArchivedTasks } from './retired-data.ts'
 import { appendActivity } from './activity.ts'
+import { preservesSpeakerCongregations } from '../../src/modules/oradores-congregations.ts'
 import { pathModule, type ActivityEntry } from '../../src/modules/activity-domain.ts'
 import type { PublicationRoot } from '../../src/modules/publication-contract.ts'
 
@@ -39,6 +40,7 @@ export function auditedWrite(current:PublicationRoot,path:string,method:string,v
     if(proposed===null)delete parent[leaf];else parent[leaf]=proposed
   }
   if(!next)return undefined
+  if(!preservesSpeakerCongregations(current.tarefas?.discursos??{},next.tarefas?.discursos??{}))return undefined
   // Use changed leaf paths (not values) to split mixed Tarefas/Oradores writes.
   const paths=method==='PATCH'&&value&&typeof value==='object'
     ? Object.keys(value).map(key=>[path,key].filter(Boolean).join('/')) : [path]

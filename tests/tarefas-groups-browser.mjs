@@ -32,6 +32,7 @@ try{
     await page.goto(process.env.APP_TEST_URL||'http://127.0.0.1:5191/')
     await page.locator('[data-menu-card="tarefas"]').click()
     await page.locator('[data-workspace-tab="config"]').click()
+    await page.getByText('Distribuição por grupo',{exact:true}).click()
     await page.locator('#taskGroupEnabled').check()
     await page.locator('[data-task-group="anciaos"]').fill('90')
     assert.equal(await page.locator('#saveTaskGroups').isDisabled(),true)

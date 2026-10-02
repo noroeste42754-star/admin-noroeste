@@ -2,7 +2,8 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import { quadroDataResponse } from '../netlify/functions/quadro-data.ts'
 import { loadPartialAgendaRoot } from '../netlify/lib/agenda-root.ts'
-import { quadroEvents,quadroNotices,mergeQuadroData,isQuadroData,safePublicLink,QUADRO_SOURCES } from '../src/modules/quadro-domain.ts'
+import { quadroEvents,quadroNotices,mergeQuadroData,isQuadroData,safePublicLink,quadroCalendarEvents,QUADRO_SOURCES } from '../src/modules/quadro-domain.ts'
+import { agendaToIcs } from '../src/modules/individual-domain.ts'
 import { fortalezaToday,addCivilDays } from '../src/modules/civil-date.ts'
 import { canAccessData,canMutateData,withoutPrivateRoots } from '../netlify/lib/data-authorization.ts'
 import { canManageStoragePath,canReadPublicStoragePath,storageFileResponse } from '../netlify/functions/storage-file.ts'
@@ -27,6 +28,15 @@ const fixture=()=>({
  }}
 })
 const empty=()=>({events:[],notices:[],agenda:{config:{},documentos:{}},completedSources:[],failedSources:[]})
+
+test('calendário do Quadro inclui eventos gerais de dia inteiro e limita ao mês escolhido',()=>{
+ const source={...empty(),events:[{id:'t',source:'tarefas',date:'2026-10-03',title:'Presidente',detail:'1ª seção',people:['Ana Santos'],status:'futuro'}],notices:[{id:'a',date:'2026-10-04',title:'Assembleia',description:'Evento geral'},{id:'b',date:'2026-11-01',title:'Novembro',description:''}]}
+ const events=quadroCalendarEvents(source,'2026-10'),ics=agendaToIcs(events,'2026-10-01T12:00:00Z',{namespace:'noroeste-quadro'})
+ assert.equal(events.length,2)
+ assert.match(ics,/SUMMARY:Assembleia/);assert.match(ics,/DTSTART;VALUE=DATE:20261004/);assert.match(ics,/DTEND;VALUE=DATE:20261005/)
+ assert.match(ics,/Ana Santos/);assert.doesNotMatch(ics,/SUMMARY:Novembro/)
+ assert.deepEqual(quadroCalendarEvents(source,'2026-13'),[])
+})
 test('adaptação do JSON conserva históricos, não inventa sobrenomes e resolve somente IDs exatos',()=>{
  const root=fixture();root.master.pessoas.m1.name='Ana Maria Santos';root.master.pessoas.m2.name='Bruno';root.usuarios.secret={nome:'Ana Maria',senha:'senha-teste',masterId:'m1',apps:{mestre:true,oradores:true,limpeza:true}}
  root.tarefas.discursos.oradores.o1.pessoaId='p-stable'
@@ -43,6 +53,14 @@ test('adaptação do JSON conserva históricos, não inventa sobrenomes e resolv
 test('Quadro não divulga designação de orador inativo ou cadastro ausente',()=>{
  const root=fixture();root.tarefas.discursos.oradores.o1.ativo=false;delete root.tarefas.discursos.oradores.o2
  assert.equal(quadroEvents(root).some(e=>e.source==='oradores'),false)
+})
+
+test('Quadro resolve vínculo legado explícito por pessoaId sem inferir pelo nome',()=>{
+ const root=fixture(),speaker=root.tarefas.discursos.oradores.o1
+ delete speaker.masterId;speaker.pessoaId='p1'
+ assert.ok(quadroEvents(root).some(e=>e.source==='oradores'&&e.people.includes('Ana Santos')))
+ speaker.pessoaId='ausente'
+ assert.equal(quadroEvents(root).some(e=>e.source==='oradores'&&e.people.includes('Ana Santos')),false)
 })
 test('Quadro combina Tarefas e Oradores das duas seções, TPL e eventos gerais publicados',()=>{
  const root=fixture(),events=quadroEvents(root)

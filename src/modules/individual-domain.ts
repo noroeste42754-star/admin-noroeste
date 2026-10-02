@@ -13,12 +13,13 @@ export interface AgendaEvent {
 }
 
 export interface AnnouncementEvent extends AgendaEvent { people: string[] }
+export interface AgendaCalendarEvent extends Omit<AgendaEvent, 'source'> { source: AgendaSource | 'geral' }
 
 type BoardMeetingKind = 'midweek' | 'weekend'
 export interface BoardMeetingDate { date: string; kind: BoardMeetingKind }
 
 export interface AgendaIcsOptions {
-  reminders?: Partial<Record<AgendaSource, string[]>>
+  reminders?: Partial<Record<AgendaSource | 'geral', string[]>>
   namespace?: string
   calendarName?: string
 }
@@ -212,7 +213,7 @@ function nextCivilDate(value: string): string {
   date.setUTCDate(date.getUTCDate() + 1)
   return date.toISOString().slice(0, 10).replace(/-/g, '')
 }
-export function agendaToIcs(events: AgendaEvent[], generatedAt: string, options: AgendaIcsOptions = {}): string {
+export function agendaToIcs(events: AgendaCalendarEvent[], generatedAt: string, options: AgendaIcsOptions = {}): string {
   const namespace = options.namespace?.replace(/[^a-zA-Z0-9_-]/g, '') || 'noroeste'
   const body = events.filter(event => validAgendaDate(event.date) && validAgendaTime(event.time)).map(event => {
     const place = agendaLocation(event.location ?? '', event.mapLocation)

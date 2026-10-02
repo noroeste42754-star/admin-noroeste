@@ -1,6 +1,10 @@
 import assert from 'node:assert/strict'
 import { mkdir } from 'node:fs/promises'
 import { chromium } from 'playwright'
+import { PDFDocument } from 'pdf-lib/cjs/index.js'
+
+const testPdf=await PDFDocument.create();testPdf.addPage().drawText('PDF publico de teste')
+const testPdfBytes=Buffer.from(await testPdf.save())
 
 const browser=await chromium.launch({channel:'msedge',headless:true}),date='2026-10-04'
 const event=(id,source,title,detail,people)=>({id,source,date,time:'09:00',title,detail,people,status:'futuro'})
@@ -31,10 +35,12 @@ try{
    assert.equal(request.headers()['x-noroeste-installation'],undefined)
    if(phase===3)return route.fulfill({status:503,json:{error:'Falha simulada'}})
    const body=payload()
+   body.agenda.documentos.adminNovember={id:'nov',modulo:'admin',tipo:'admin',periodo:'2026-11',inicio:'2026-11-01',fim:'2026-11-30',nome:'Novembro.pdf',url:'https://example.test/novembro.pdf',criadoEm:'2026-09-30T12:00:00Z'}
    if(phase===1){body.events=[];body.notices=[];body.agenda={config:{},documentos:{}};body.completedSources=['tarefas'];body.failedSources=['oradores']}
    if(phase===2){body.events=[event('o1-new','oradores','Discurso atualizado','Tema novo · 1ª seção',['Ana Santos'])];body.completedSources=['oradores'];body.failedSources=[]}
    return route.fulfill({json:body})
   })
+  await context.route('https://example.test/**',route=>route.fulfill({body:testPdfBytes,headers:{'content-type':'application/pdf','content-disposition':'attachment; filename="teste-publico.pdf"'}}))
   for(const alias of ['quadro/','agenda/']){
    await page.goto(new URL(alias,process.env.APP_TEST_URL).href)
    await page.getByRole('heading',{name:'Quadro de Anúncios',exact:true}).waitFor()
@@ -53,16 +59,39 @@ try{
   await page.locator('[data-quadro-filter="s2"]').click()
   assert.equal(await page.locator('.agenda-event').count(),1)
   assert.match(await page.locator('.agenda-list').innerText(),/Bruno Silva/)
+  await page.reload();await page.locator('[role="status"]').filter({hasText:'Atualizado em'}).waitFor()
+  assert.equal(await page.locator('[data-quadro-filter="s2"]').getAttribute('aria-pressed'),'true')
+  assert.equal(await page.locator('.agenda-event').count(),1,'filtro e data persistem depois de recarregar')
   await page.locator('[data-quadro-filter="todos"]').click()
   await page.locator('[data-quadro-tab="documentos"]').click()
   assert.equal(await page.locator('a').filter({hasText:'Abrir PDF'}).count(),4)
   assert.equal(await page.locator('a[href="https://example.test/oradores.pdf"]').count(),1)
   assert.match(await page.locator('#quadroPanel').innerText(),/duas seções/)
+  assert.equal(await page.locator('[data-quadro-tab="documentos"]').getAttribute('aria-pressed'),'true')
+  for(const module of ['tarefas','oradores','escala','admin']){
+   const downloaded=page.waitForEvent('download')
+   await page.locator(`a[href="https://example.test/${module}.pdf"]`).click()
+   const file=await downloaded,stream=await file.createReadStream(),chunks=[];for await(const chunk of stream)chunks.push(chunk)
+   assert.equal((await PDFDocument.load(Buffer.concat(chunks))).getPageCount(),1)
+  }
+  await page.locator('#quadroDocumentMonth').selectOption('2026-11')
+  assert.equal(await page.locator('a[download]').count(),1,'anúncio do Admin acessível mesmo sem PDF de módulo')
+  await page.reload();await page.locator('[role="status"]').filter({hasText:'Atualizado em'}).waitFor()
+  assert.equal(await page.locator('#quadroDocumentMonth').inputValue(),'2026-11')
+  assert.equal(await page.locator('a[href="https://example.test/novembro.pdf"]').count(),1)
+  await page.locator('#quadroDocumentMonth').selectOption('2026-10')
   await page.locator('[data-quadro-tab="geral"]').click()
   const download=page.waitForEvent('download')
   await page.locator('details summary').click()
   await page.locator('#quadroIcs').click()
-  assert.equal(await (await download).failure(),null)
+  const calendar=await download;assert.equal(await calendar.failure(),null)
+  const stream=await calendar.createReadStream(),chunks=[];for await(const chunk of stream)chunks.push(chunk)
+  assert.match(Buffer.concat(chunks).toString(),/SUMMARY:Assembleia geral/)
+  await page.locator('#quadroRefresh').click();await page.locator('[role="status"]').filter({hasText:'Atualizado em'}).waitFor()
+  assert.equal(await page.locator('details').evaluate(el=>el.open),true,'atualizar não fecha as opções de compartilhamento')
+  await page.locator('#quadroPrev').click();assert.equal(await page.locator('#quadroMonth').inputValue(),'2026-09')
+  await page.locator('#quadroNext').click();assert.equal(await page.locator('#quadroMonth').inputValue(),'2026-10')
+  await page.locator('[data-quadro-date="'+date+'"]').click()
   phase=1;await page.locator('#quadroRefresh').click();await page.locator('#quadroRetry').waitFor()
   assert.equal(await page.locator('.agenda-event').count(),3)
   assert.match(await page.locator('[role="status"]').first().innerText(),/Oradores/)
@@ -77,7 +106,7 @@ try{
   assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1),true,'largura '+width)
   if(width===390)await page.screenshot({path:new URL('../output/quadro-auditoria/quadro-390.png',import.meta.url).pathname.replace(/^\/([A-Z]:)/i,'$1'),fullPage:true})
   assert.deepEqual(errors,[])
-  console.log('Quadro '+width+'px: público, alias, filtros das duas seções, quatro documentos, ICS, cache e retry OK')
+  console.log('Quadro '+width+'px: público, filtros persistentes, PDFs baixados, Admin sem módulo, navegação, ICS, cache e retry OK')
   await context.close()
  }
 }finally{await browser.close()}

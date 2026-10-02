@@ -242,7 +242,7 @@ function renderNavigation(): void {
   const host = document.getElementById('mestreNav')
   if (host) renderWorkspaceNav(host, 'Admin', 'pessoas', activeTab, [
     { id:'pessoas', label:'Pessoas' }, { id:'usuarios', label:'Acessos' },
-    { id:'config', label:'Administração', children:[
+    { id:'config', label:'Avançado', children:[
       { id:'config', label:'Configurações' }, { id:'vinculos', label:'Vínculos' }, { id:'dados', label:'Backup' }, { id:'saude', label:'Saúde e PDFs' },
     ] },
   ], id => { void switchTab(id as typeof activeTab) })
@@ -270,11 +270,8 @@ function renderIndex(): void {
   content.innerHTML = '<div style="margin-bottom:14px"><h2 style="font-size:1.05rem;color:var(--blue-deep);margin-bottom:2px">Admin</h2></div><div id="mestreMenu"></div>'
   const items: ItemMenu[] = [
     { id: 'pessoas', titulo: 'Pessoas', subtitulo: 'Cadastros e dados da congregação', icone: '♙', corFundo: '#003F72' },
-    { id: 'usuarios', titulo: 'Usuários', subtitulo: 'Acessos e módulos disponíveis', icone: '⚿', corFundo: '#006EB6' },
-    { id: 'config', titulo: 'Configuração', subtitulo: 'Congregação, agenda e PDFs', icone: '⚙', corFundo: '#5C6062' },
-    { id: 'vinculos', titulo: 'Vínculos', subtitulo: 'IDs compartilhados entre os módulos', icone: '⌁', corFundo: '#1A6B3C' },
-    { id: 'dados', titulo: 'Dados', subtitulo: 'Backup completo e restauração', icone: '▤', corFundo: '#B3261E' },
-    { id: 'saude', titulo: 'Saúde e PDFs', subtitulo: 'Estado dos serviços e limpeza protegida', icone: '◉', corFundo: '#376A8C' },
+    { id: 'usuarios', titulo: 'Acessos', subtitulo: 'Permissões por pessoa e módulo', icone: '⚿', corFundo: '#006EB6' },
+    { id: 'config', titulo: 'Avançado', subtitulo: 'Configurações, vínculos, backup e diagnóstico', icone: '⚙', corFundo: '#5C6062' },
   ]
   renderMenuCards(content.querySelector<HTMLElement>('#mestreMenu')!, items, id => { void switchTab(id as typeof activeTab) })
 }

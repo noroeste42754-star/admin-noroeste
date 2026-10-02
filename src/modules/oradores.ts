@@ -1,10 +1,11 @@
-import { focusCorrection, fieldHelp } from '../ui/field-guidance'
+import { fieldHelp } from '../ui/field-guidance'
+import { localPreferences, persistDisclosures } from '../ui/local-preferences'
 import { mountRecordEditor } from '../ui/record-editor'
 import { addCivilDays, fortalezaToday, fortalezaCurrentMonth } from './civil-date'
-import { whatsappPhone } from './message-domain'
 import { availableDates } from './oradores-available'
-import { assignmentEntries, assignmentsMessage, confirmationMessage, exchangesMessage, availableMessage } from './oradores-messages'
+import { assignmentEntries, assignmentsMessage, exchangesMessage, availableMessage } from './oradores-messages'
 import { cleanAddress } from './agenda-location'
+import { congregationInUse } from './oradores-congregations'
 import { apiJson, ApiError } from '../secure-api'
 import { publishModulePeriod, renderPublicationStatus } from './module-publication'
 import type { AppContext } from '../types'
@@ -17,7 +18,7 @@ import {
   EVENT_KIND_LABEL, SPEAKER_ROLE_LABEL, TALK_KIND_LABEL, TALK_STATUS_LABEL,
   formatSpeakerDate, monthBounds, newSpeakerId, normalizeSpeakerEvents, normalizeSpeakersRoot,
   phoneDigits, sameMonth, scheduleCongregationId, scheduleCongregationName, scheduleStatus,
-  speakerPendingItems, validIsoDate, scheduleBaseForEdit, isDuplicateSchedule,
+  validIsoDate, scheduleBaseForEdit, isDuplicateSchedule,
   type Speaker, type SpeakerCongregation, type SpeakerEvent, type SpeakerEventKind,
   type SpeakersRoot, type TalkKind, type TalkSchedule, type TalkTheme, type SpeakerSection,
 } from './oradores-domain'
@@ -30,7 +31,7 @@ import { showMessagePreview } from '../ui/message-preview'
 let themeFilter:ThemeFilter='available'
 let themeQuery=''
 
-type Screen = 'programacao' | 'temas' | 'eventos' | 'oradores' | 'congregacoes' | 'pendencias' | 'emergencia'
+type Screen = 'programacao' | 'temas' | 'eventos' | 'oradores' | 'congregacoes' | 'emergencia'
 type Planning = { meetingDays?:{ weekendDow?:number; weekendS1Dow?:number }; excludedDates?:string[]; enableSection1?:boolean; s1Time?:string; s2Time?:string }
 type TaskPerson = LinkedPerson & {name?:string;active?:boolean}
 
@@ -80,7 +81,7 @@ function installEditGuard():void {
   document.addEventListener('click',event=>{
     if (!document.getElementById('oradoresRoot')) return
     const button=(event.target as HTMLElement)?.closest('button')
-    if (!button || !button.matches('[data-workspace-tab], [data-module-index], #btnBack, #btnSair, [id^="cancel"], [id^="new"], [data-edit-speaker], [data-edit-schedule], [data-edit-theme], [data-edit-congregation], [data-edit-event], [data-confirm-schedule], [data-reconfirm-schedule], [data-substitute-date], #clearScheduleFilters, #fillScheduleDates, #oradoresPrev, #oradoresNext')) return
+    if (!button || !button.matches('[data-workspace-tab], [data-module-index], #btnBack, #btnSair, [id^="cancel"], [id^="new"], [data-edit-speaker], [data-edit-schedule], [data-edit-theme], [data-edit-congregation], [data-edit-event], [data-confirm-schedule], [data-reconfirm-schedule], [data-substitute-date], #clearScheduleFilters, #fillScheduleDates, #findSpeakerSubstitute, #oradoresPrev, #oradoresNext')) return
     if (!allowLeave()) {event.preventDefault();event.stopImmediatePropagation()}
   },{...options,capture:true})
   window.addEventListener('beforeunload',event=>{if(document.getElementById('oradoresRoot')&&(dirty||saving)){event.preventDefault();event.returnValue=''}},options)
@@ -92,7 +93,9 @@ let data: SpeakersRoot = {}
 let events: Record<string, SpeakerEvent> = {}
 let planning: Planning = {}
 let taskPeople: Record<string, TaskPerson> = {}
-let selectedMonth = localStorage.getItem('noroeste_oradores_month') ?? fortalezaCurrentMonth()
+let selectedMonth = fortalezaCurrentMonth()
+let preferences: ReturnType<typeof localPreferences>
+let stopDisclosures: (() => void) | undefined
 let editingId = ''
 let rawSchedule:Record<string, unknown> = {}
 let scheduleDraft: Record<string, string> | null = null
@@ -109,22 +112,33 @@ const themes = (): Record<string, TalkTheme> => data.temas ?? {}
 const congregations = (): Record<string, SpeakerCongregation> => data.congregacoes ?? {}
 const schedule = (): Record<string, TalkSchedule> => data.programacao ?? {}
 const toast = (message: string): void => { const element=document.getElementById('toast'); if (!element) return; element.textContent=message; element.classList.add('show'); setTimeout(()=>element.classList.remove('show'), 3000) }
-function openWhatsapp(phone:string, message:string):boolean { const digits=whatsappPhone(phone); if(!digits){toast('Cadastre um telefone válido antes de abrir o WhatsApp');return false} window.open(`https://wa.me/${digits}?text=${encodeURIComponent(message)}`,'_blank','noopener,noreferrer');return true }
-function scheduleMessage(item:TalkSchedule):string { return confirmationMessage(item,data,messageSettings.meetingText,item.secao==='s1'?planning.s1Time:planning.s2Time) }
 const option = (value:string, label:string, selected:string): string => `<option value="${esc(value)}" ${value===selected?'selected':''}>${esc(label)}</option>`
 const field = (label:string, control:string, help=''): string => `<label class="form-field"><span>${esc(label)}</span>${control}${help ? `<small>${esc(help)}</small>` : ''}</label>`
-const sectionTitle = (title:string): string => `<div class="module-section-title">${screen === 'programacao' ? '' : moduleBackButton()}<h2>${esc(title)}</h2></div>`
+const sectionTitle = (title:string): string => `<div class="module-section-title" ${screen==='emergencia'?'data-substitution-title':''}>${screen === 'programacao' ? '' : moduleBackButton()}<h2>${esc(title)}</h2></div>`
 const empty = (message:string): string => `<p class="empty-state">${esc(message)}</p>`
 const isoNow = (): string => new Date().toISOString()
 
 export default function mount(context: AppContext): void {
   selectedSection=context.oradoresSection??'s2'
-  if(context.overview)selectedMonth=context.overview.month
+  preferences=localPreferences(context.uid,messageSettingsModule())
+  let legacyMonth=fortalezaCurrentMonth()
+  try{legacyMonth=localStorage.getItem('noroeste_oradores_month')??legacyMonth}catch{/* storage opcional */}
+  const month=preferences.get('month',legacyMonth)
+  selectedMonth=context.overview?.month??(/^\d{4}-(0[1-9]|1[0-2])$/.test(month)?month:fortalezaCurrentMonth())
+  preferences.set('month',selectedMonth)
   appContext=context;themeFilter='available';themeQuery='';dirty=false;saving=false;masterPeople={};rawSpeakers={};taskPeriods={};speakerQuery='';scheduleQuery='';scheduleFilter='';onlyFuture=false;emergencyDate=today();installEditGuard()
-  screen='pendencias'; editingId=''; scheduleDraft=null; loadPromise=null; data={}; events={}; planning={}; taskPeople={}
+  const savedFilter=preferences.get('scheduleFilter','')
+  scheduleFilter=['','speaker','theme','confirm','reconfirm'].includes(savedFilter)?savedFilter:''
+  onlyFuture=preferences.get('onlyFuture',false)
+  const savedTheme=preferences.get('themeFilter','available')
+  themeFilter=Object.prototype.hasOwnProperty.call(THEME_FILTER_LABELS,savedTheme)?savedTheme as ThemeFilter:'available'
+  selectedCongregationId=preferences.get('congregation','')
+  screen='programacao'; editingId=''; scheduleDraft=null; loadPromise=null; data={}; events={}; planning={}; taskPeople={}
   const host=document.getElementById('appContent'); if (!host) return
   host.innerHTML='<div id="oradoresNav"></div><div id="oradoresRoot"></div>'
-  void openScreen('pendencias')
+  stopDisclosures?.()
+  stopDisclosures=persistDisclosures(root(),preferences)
+  void openScreen('programacao')
 }
 
 async function load(): Promise<boolean> {
@@ -158,11 +172,10 @@ async function openScreen(next: Screen, substitutionDate=''): Promise<void> {
 
 function renderNavigation(): void {
   const host=document.getElementById('oradoresNav'); if (!host) return
-  renderWorkspaceNav(host, selectedSection==='s1'?'Oradores · 1ª seção':'Oradores · 2ª seção', 'pendencias', screen, [
-    { id:'pendencias', label:'Pendências' },
+  renderWorkspaceNav(host, selectedSection==='s1'?'Oradores · 1ª seção':'Oradores · 2ª seção', 'programacao', screen==='emergencia'?'programacao':screen, [
     { id:'programacao', label:'Programação' },
-    { id:'oradores', label:'Oradores', children:[{id:'oradores',label:'Oradores'},{id:'emergencia',label:'Substituições'}] },
-    { id:'congregacoes', label:'Congregações' },
+    { id:'oradores', label:'Oradores' },
+    { id:'congregacoes', label:'Intercâmbio' },
     { id:'temas', label:'Mais opções', children:[{id:'temas',label:'Temas'},{id:'eventos',label:'Eventos'}] },
   ], id=>void openScreen(id as Screen))
 }
@@ -174,7 +187,6 @@ function render(): void {
   else if (screen==='temas') renderThemes()
   else if (screen==='congregacoes') renderCongregations()
   else if (screen==='eventos') renderEvents()
-  else if (screen==='pendencias') renderPending()
   else renderEmergency()
 }
 
@@ -182,9 +194,9 @@ function periodControl(): string {
   return `<div class="agenda-toolbar oradores-period"><button id="oradoresPrev" class="btn btn-ghost" type="button" aria-label="Mês anterior">‹</button><input id="oradoresMonth" class="form-input" type="month" value="${esc(selectedMonth)}"><button id="oradoresNext" class="btn btn-ghost" type="button" aria-label="Próximo mês">›</button></div>`
 }
 function bindPeriod(): void {
-  const move=(delta:number):void=>{ const [year,month]=selectedMonth.split('-').map(Number), date=new Date(Date.UTC(year!,month!-1+delta,1)); selectedMonth=date.toISOString().slice(0,7); localStorage.setItem('noroeste_oradores_month',selectedMonth); renderSchedule() }
+  const move=(delta:number):void=>{ const [year,month]=selectedMonth.split('-').map(Number), date=new Date(Date.UTC(year!,month!-1+delta,1)); selectedMonth=date.toISOString().slice(0,7); preferences.set('month',selectedMonth); renderSchedule() }
   document.getElementById('oradoresPrev')?.addEventListener('click',()=>move(-1)); document.getElementById('oradoresNext')?.addEventListener('click',()=>move(1))
-  document.getElementById('oradoresMonth')?.addEventListener('change',event=>{ const value=(event.currentTarget as HTMLInputElement).value; if(!allowLeave()){(event.currentTarget as HTMLInputElement).value=selectedMonth;return} if (/^\d{4}-\d{2}$/.test(value)) { selectedMonth=value; localStorage.setItem('noroeste_oradores_month',value); renderSchedule() } })
+  document.getElementById('oradoresMonth')?.addEventListener('change',event=>{ const value=(event.currentTarget as HTMLInputElement).value; if(!allowLeave()){(event.currentTarget as HTMLInputElement).value=selectedMonth;return} if (/^\d{4}-(0[1-9]|1[0-2])$/.test(value)) { selectedMonth=value; preferences.set('month',value); renderSchedule() } })
 }
 
 function themeChoiceLabel(id:string):string {
@@ -216,7 +228,7 @@ function scheduleEditor(): string {
     ${kind==='discurso_visitante' ? field('Nome digitado (se não cadastrado)',`<input name="oradorNome" maxlength="100" value="${esc(draft?.['oradorNome']??item?.oradorNome)}">`) : ''}
     ${kind!=='discurso_local' ? field(kind==='saida_orador'?'Congregação de destino':'Congregação de origem',`<select name="congregacaoId">${congregationOptions(congregationId)}</select>`) : ''}
     ${field('Número do tema',`<input name="themeNumber" type="text" inputmode="numeric" autocomplete="off" value="${esc(draft?.['themeNumber']??themes()[item?.temaId??'']?.numero??item?.temaNumero??'')}" placeholder="Ex.: 25" aria-describedby="scheduleThemePreview"><input name="temaId" type="hidden" value="${esc(draft?.['temaId']??item?.temaId)}">`)}<div id="scheduleThemePreview" class="form-help" aria-live="polite"></div>
-  </div><details ${draft?.['oradorSecundarioId']||item?.oradorSecundarioId||draft?.['horarioLocal']||item?.horarioLocal||draft?.['observacoes']||item?.observacoes?'open':''}><summary>Mais opções</summary><div class="module-form-grid">
+  </div><details data-ui-preference="schedule-editor-options" ${draft?.['oradorSecundarioId']||item?.oradorSecundarioId||draft?.['horarioLocal']||item?.horarioLocal||draft?.['observacoes']||item?.observacoes?'open':''}><summary>Mais opções</summary><div class="module-form-grid">
     ${kind==='discurso_local' ? field('Segundo orador',`<select name="oradorSecundarioId">${speakerOptions(draft?.['oradorSecundarioId']??item?.oradorSecundarioId,'local',section)}</select>`) : ''}
     ${kind!=='saida_orador' ? field('Horário local',`<input name="horarioLocal" type="time" value="${esc(draft?.['horarioLocal']??item?.horarioLocal ?? (section==='s1'?planning.s1Time:planning.s2Time) ?? '')}">`) : ''}
     ${field('Observações',`<textarea name="observacoes" maxlength="500">${esc(draft?.['observacoes']??item?.observacoes)}</textarea>`)}
@@ -226,29 +238,30 @@ function scheduleEditor(): string {
 function scheduleCard(id:string,item:TalkSchedule,showActions=true): string {
   const speaker=speakers()[item.oradorId??'']?.nome?.trim() || item.oradorNome?.trim() || 'Sem orador', theme=themes()[item.temaId??''], congregation=congregations()[scheduleCongregationId(item)]?.nome ?? scheduleCongregationName(item)
   const status=scheduleStatus(item), section=` · ${scheduleSection(item)==='s1'?'1ª seção':'2ª seção'}`
-  const actions=showActions?`<div class="service-actions"><button class="btn btn-ghost" data-edit-schedule="${esc(id)}">${!item.oradorId&&!item.oradorNome?'Definir orador':!item.temaId&&!item.temaTitulo?'Definir tema':'Editar'}</button><button class="btn btn-ghost" data-confirm-schedule="${esc(id)}" ${!item.oradorId&&!item.oradorNome?'disabled':''}>${status==='confirmado'?'Desfazer confirmação':'Confirmar'}</button></div><details class="oradores-more-actions"><summary>Mais ações</summary><div class="service-actions">${status==='confirmado' ? `<button class="btn btn-ghost" data-reconfirm-schedule="${esc(id)}">${item.reconfirmacao?.status?'Desfazer reconfirmação':'Reconfirmar'}</button>`:''}${id&&item.tipo!=='saida_orador'?`<button class="btn btn-ghost" data-substitute-date="${esc(item.data)}">Buscar substituto</button>`:''}${id?`<button class="btn btn-ghost" data-notify-schedule="${esc(id)}">${status==='confirmado'?'Abrir WhatsApp':'Pedir confirmação'}</button>`:''}</div></details>`:''
+  const actions=showActions?`<div class="service-actions"><button class="btn btn-ghost" data-edit-schedule="${esc(id)}">${!item.oradorId&&!item.oradorNome?'Definir orador':!item.temaId&&!item.temaTitulo?'Definir tema':'Editar'}</button><button class="btn btn-ghost" data-confirm-schedule="${esc(id)}" ${!item.oradorId&&!item.oradorNome?'disabled':''}>${status==='confirmado'?'Desfazer confirmação':'Confirmar'}</button></div><details class="oradores-more-actions" data-ui-preference="schedule-actions:${esc(id)}"><summary>Mais ações</summary><div class="service-actions">${status==='confirmado' ? `<button class="btn btn-ghost" data-reconfirm-schedule="${esc(id)}">${item.reconfirmacao?.status?'Desfazer reconfirmação':'Reconfirmar'}</button>`:''}${id&&item.tipo!=='saida_orador'?`<button class="btn btn-ghost" data-substitute-date="${esc(item.data)}">Buscar substituto</button>`:''}</div></details>`:''
   return `<article class="oradores-card"><div class="oradores-card-head"><div><strong>${esc(formatSpeakerDate(item.data))}</strong><small>${esc(TALK_KIND_LABEL[item.tipo]+section)}</small></div><span class="status-pill status-${esc(status)}">${esc(TALK_STATUS_LABEL[status])}</span></div><div class="oradores-card-grid"><div><span>Orador</span><strong>${esc(speaker)}</strong></div><div><span>Tema</span><strong>${esc(theme?`${String(theme.numero).padStart(3,'0')} - ${theme.titulo}`:item.temaTitulo||'Sem tema')}</strong></div>${congregation?`<div><span>Congregação</span><strong>${esc(congregation)}</strong></div>`:''}${item.oradorSecundarioNome?`<div><span>Segundo orador</span><strong>${esc(item.oradorSecundarioNome)}</strong></div>`:''}</div>${actions}</article>`
 }
 
 function renderSchedule(): void {
   const monthRows=Object.entries(schedule()).filter(([,item])=>sameMonth(item.data,selectedMonth)&&visibleSchedule(item))
-  const hasCombinedPdfRows=Object.values(schedule()).some(item=>sameMonth(item.data,selectedMonth))
+  const hasCombinedPdfRows=Object.values(schedule()).some(item=>sameMonth(item.data,selectedMonth)||(item.tipo==='saida_orador'&&item.data>=`${selectedMonth}-01`))
   const matchesFilter=(item:TalkSchedule,filter:string):boolean=>filter==='speaker'?!item.oradorId&&!item.oradorNome:filter==='theme'?!item.temaId&&!item.temaTitulo:filter==='confirm'?scheduleStatus(item)==='por_confirmar':filter==='reconfirm'?scheduleStatus(item)==='confirmado'&&!item.reconfirmacao?.status&&item.data>=today()&&item.data<=addCivilDays(today(),7):true
   const rows=monthRows.filter(([,item])=>(!onlyFuture||item.data>=today())&&matchesFilter(item,scheduleFilter)&&[`${speakers()[item.oradorId??'']?.nome??item.oradorNome??''}`,themes()[item.temaId??'']?.titulo??item.temaTitulo??'',String(themes()[item.temaId??'']?.numero??item.temaNumero??'')].some(value=>value.toLocaleLowerCase('pt-BR').includes(scheduleQuery.toLocaleLowerCase('pt-BR')))).sort((a,b)=>a[1].data.localeCompare(b[1].data)||a[1].tipo.localeCompare(b[1].tipo))
-  root().innerHTML=`${sectionTitle('Programação de oradores')}${periodControl()}<div class="service-actions"><button id="newSchedule" class="btn btn-primary" type="button">Nova programação</button><button id="fillScheduleDates" class="btn btn-ghost" type="button">Criar datas do mês</button><button id="speakerSchedulePdf" class="btn btn-ghost" type="button" ${hasCombinedPdfRows?'':'disabled'}>Baixar PDF</button><button id="speakerSchedulePublish" class="btn btn-ghost" type="button" ${hasCombinedPdfRows?'':'disabled'}>Publicar no Quadro</button></div><p id="speakerPublicationStatus" class="notice" aria-live="polite">Consultando publicação…</p>${monthRows.length ? '<p class="form-help">Confirmar registra a resposta do orador. Publicar no Quadro atualiza o PDF; editar a programação não atualiza o arquivo já publicado.</p>' : ''}${scheduleEditor()}${monthRows.length ? `<div class="service-actions">${[['','Todos'],['speaker','Sem orador'],['theme','Sem tema'],['confirm','A confirmar'],['reconfirm','Reconfirmar']].map(([key,label])=>`<button class="btn ${scheduleFilter===key?'btn-primary':'btn-ghost'}" data-schedule-filter="${key}" aria-pressed="${scheduleFilter===key}">${label}: ${monthRows.filter(([,item])=>matchesFilter(item,key!)).length}</button>`).join('')}</div>
+  root().innerHTML=`${sectionTitle('Programação de oradores')}${periodControl()}<div class="service-actions"><button id="newSchedule" class="btn btn-primary" type="button">Nova programação</button><button id="speakerSchedulePdf" class="btn btn-ghost" type="button" ${hasCombinedPdfRows?'':'disabled'}>Baixar PDF</button><button id="speakerSchedulePublish" class="btn btn-ghost" type="button" ${hasCombinedPdfRows?'':'disabled'}>Publicar no Quadro</button></div><details class="workspace-disclosure" data-ui-preference="schedule-options"><summary>Mais opções da programação</summary><div class="service-actions"><button id="fillScheduleDates" class="btn btn-ghost" type="button">Criar datas do mês</button><button id="findSpeakerSubstitute" class="btn btn-ghost" type="button">Buscar substituto</button></div></details><p id="speakerPublicationStatus" class="notice" aria-live="polite">Consultando publicação…</p>${monthRows.length ? '<p class="form-help">Confirmar registra a resposta do orador. Publicar no Quadro atualiza o PDF; editar a programação não atualiza o arquivo já publicado.</p>' : ''}${scheduleEditor()}${monthRows.length ? `<div class="service-actions">${[['','Todos'],['speaker','Sem orador'],['theme','Sem tema'],['confirm','A confirmar'],['reconfirm','Reconfirmar']].map(([key,label])=>`<button class="btn ${scheduleFilter===key?'btn-primary':'btn-ghost'}" data-schedule-filter="${key}" aria-pressed="${scheduleFilter===key}">${label}: ${monthRows.filter(([,item])=>matchesFilter(item,key!)).length}</button>`).join('')}</div>
     ${field('Buscar na programação',`<input id="scheduleSearch" type="search" value="${esc(scheduleQuery)}" placeholder="Orador, número ou título do tema">`)}
-    <label class="oradores-check"><input id="scheduleOnlyFuture" type="checkbox" ${onlyFuture?'checked':''}> Só o que falta (datas de hoje em diante)</label>` : ''}<div class="oradores-list">${rows.map(([id,item])=>scheduleCard(id,item)).join('')||empty(monthRows.length?'Nenhum resultado para esta busca ou filtro.':'Nenhuma programação neste mês. Use “Nova programação” ou “Criar datas do mês” para começar.')}</div>${monthRows.length && (scheduleQuery||scheduleFilter||onlyFuture)?'<button id="clearScheduleFilters" class="btn btn-ghost">Limpar filtros</button>':''}<div id="oradoresMessageSettings"></div>`
+    <label class="oradores-check"><input id="scheduleOnlyFuture" type="checkbox" ${onlyFuture?'checked':''}> Só o que falta (datas de hoje em diante)</label>` : ''}<div class="oradores-list">${rows.map(([id,item])=>scheduleCard(id,item)).join('')||empty(monthRows.length?'Nenhum resultado para esta busca ou filtro.':'Nenhuma programação neste mês. Use “Nova programação” ou “Criar datas do mês” para começar.')}</div>${monthRows.length && (scheduleQuery||scheduleFilter||onlyFuture)?'<button id="clearScheduleFilters" class="btn btn-ghost">Limpar filtros</button>':''}`
   mountRecordEditor(root(), 'speakerScheduleForm')
   bindPeriod()
   void showPublicationStatus()
-  document.getElementById('clearScheduleFilters')?.addEventListener('click',()=>{if(!allowLeave())return;scheduleQuery='';scheduleFilter='';onlyFuture=false;renderSchedule()})
+  document.getElementById('clearScheduleFilters')?.addEventListener('click',()=>{if(!allowLeave())return;scheduleQuery='';scheduleFilter='';onlyFuture=false;preferences.set('scheduleFilter','');preferences.set('onlyFuture',false);renderSchedule()})
   document.querySelectorAll<HTMLButtonElement>('[data-substitute-date]').forEach(button=>button.addEventListener('click',()=>{void openScreen('emergencia',button.dataset.substituteDate!)}))
-  document.querySelectorAll<HTMLButtonElement>('[data-schedule-filter]').forEach(button=>button.addEventListener('click',()=>{if(!allowLeave())return;scheduleFilter=button.dataset.scheduleFilter??'';renderSchedule()}))
+  document.querySelectorAll<HTMLButtonElement>('[data-schedule-filter]').forEach(button=>button.addEventListener('click',()=>{if(!allowLeave())return;scheduleFilter=button.dataset.scheduleFilter??'';preferences.set('scheduleFilter',scheduleFilter);renderSchedule()}))
   document.getElementById('scheduleSearch')?.addEventListener('change',event=>{if(!allowLeave())return;scheduleQuery=(event.target as HTMLInputElement).value;renderSchedule()})
-  document.getElementById('scheduleOnlyFuture')?.addEventListener('change',event=>{if(!allowLeave())return;onlyFuture=(event.target as HTMLInputElement).checked;renderSchedule()})
+  document.getElementById('scheduleOnlyFuture')?.addEventListener('change',event=>{if(!allowLeave())return;onlyFuture=(event.target as HTMLInputElement).checked;preferences.set('onlyFuture',onlyFuture);renderSchedule()})
   bindScheduleFields()
   document.getElementById('newSchedule')?.addEventListener('click',()=>{ editingId='new'; scheduleDraft=null; renderSchedule() })
   fieldHelp(root(),'#speakerScheduleForm [name="oradorId"]','Escolha um orador cadastrado. Nome e telefone dos locais são editados no Admin.')
+  document.getElementById('findSpeakerSubstitute')?.addEventListener('click',()=>void openScreen('emergencia'))
   document.getElementById('fillScheduleDates')?.addEventListener('click',()=>void createMonthSlots())
   document.getElementById('speakerSchedulePdf')?.addEventListener('click',()=>void downloadSchedulePdf())
   document.getElementById('speakerSchedulePublish')?.addEventListener('click',()=>void publishSchedulePdf())
@@ -259,8 +272,6 @@ function renderSchedule(): void {
   document.querySelectorAll<HTMLButtonElement>('[data-edit-schedule]').forEach(button=>button.addEventListener('click',()=>{ editingId=button.dataset.editSchedule!; scheduleDraft=null; renderSchedule() }))
   document.querySelectorAll<HTMLButtonElement>('[data-confirm-schedule]').forEach(button=>button.addEventListener('click',()=>void toggleConfirmation(button.dataset.confirmSchedule!)))
   document.querySelectorAll<HTMLButtonElement>('[data-reconfirm-schedule]').forEach(button=>button.addEventListener('click',()=>void toggleReconfirmation(button.dataset.reconfirmSchedule!)))
-  document.querySelectorAll<HTMLButtonElement>('[data-notify-schedule]').forEach(button=>button.addEventListener('click',()=>void notifySchedule(button.dataset.notifySchedule!)))
-  void mountModuleMessageSettings('oradoresMessageSettings',messageSettingsModule(),toast,settings=>{messageSettings=settings})
 }
 
 function saveDraftAndRerender(form:HTMLFormElement): void {
@@ -343,7 +354,6 @@ async function saveSchedule(form:HTMLFormElement): Promise<void> {
 async function deleteSchedule(): Promise<void> { const id=editingId, item=schedule()[id]; if (!item||!confirm(`Excluir a programação de ${formatSpeakerDate(item.data)}?`)) return; try { await compareAndSet(child(oradoresProgramacaoRef,id),rawSchedule[id] ?? null,null); delete rawSchedule[id]; delete schedule()[id]; dirty=false;editingId=''; toast('Programação excluída'); renderSchedule() } catch { toast('Não foi possível excluir') } }
 async function toggleConfirmation(id:string): Promise<void> { const item=schedule()[id]; if (!item||!visibleSchedule(item)) return; if(!item.oradorId&&!item.oradorNome){toast('Defina o orador antes de confirmar.');return} const confirmed=scheduleStatus(item)==='confirmado', status=confirmed?(item.oradorId||item.oradorNome?'por_confirmar':'por_definir'):'confirmado', confirmation={status:!confirmed,confirmadoEm:confirmed?'':isoNow()}; try { const patch={status,secao:scheduleSection(item),confirmacao:confirmation,updatedAt:isoNow(),reconfirmacao:confirmed?null:item.reconfirmacao??null}; const next={...(rawSchedule[id] as TalkSchedule),...patch};await compareAndSet(child(oradoresProgramacaoRef,id),rawSchedule[id]??null,next);rawSchedule[id]=next; item.secao=patch.secao;item.status=status; item.confirmacao=confirmation;if(confirmed)delete item.reconfirmacao; renderSchedule() } catch { toast('Não foi possível alterar a confirmação') } }
 async function toggleReconfirmation(id:string): Promise<void> { const item=schedule()[id]; if (!item||!visibleSchedule(item)) return; const value=!item.reconfirmacao?.status, reconfirmacao={status:value,confirmadoEm:value?isoNow():''}; try { const next={...(rawSchedule[id] as TalkSchedule),secao:scheduleSection(item),reconfirmacao,updatedAt:isoNow()};await compareAndSet(child(oradoresProgramacaoRef,id),rawSchedule[id]??null,next);rawSchedule[id]=next; item.secao=next.secao;item.reconfirmacao=reconfirmacao; renderSchedule() } catch { toast('Não foi possível alterar a reconfirmação') } }
-async function notifySchedule(id:string):Promise<void>{const item=schedule()[id],speaker=item?speakers()[item.oradorId??'']:undefined;if(!item||!speaker||!visibleSchedule(item)){toast('Vincule um orador com telefone cadastrado antes de abrir o WhatsApp');return}if(!openWhatsapp(speaker.telefone,scheduleMessage(item)))return;const avisadoEm=isoNow(),secao=scheduleSection(item);try{await update(child(oradoresProgramacaoRef,id),{avisadoEm,secao});item.avisadoEm=avisadoEm;item.secao=secao;rawSchedule[id]={...(rawSchedule[id] as TalkSchedule),avisadoEm,secao}}catch{toast('O WhatsApp abriu, mas não foi possível registrar o aviso')}}
 
 function blockedDate(date:string): boolean { return planning.excludedDates?.includes(date)===true || Object.values(events).some(item=>item.data===date&&item.tipo!=='informativo') }
 async function createMonthSlots(): Promise<void> {
@@ -398,13 +408,14 @@ function speakerEditor(): string {
 function renderSpeakers(): void {
   root().innerHTML=`${sectionTitle('Oradores')}<p class="form-help">Selecione um orador local para consultar, editar ou preparar a mensagem das designações. Visitantes são definidos na programação.</p><div class="service-actions">${canEditPeople()?'<button id="newSpeaker" class="btn btn-primary">Adicionar do cadastro Admin</button>':''}</div>
     ${speakerEditor()}${field('Buscar orador ou número de tema',`<input id="speakerSearch" type="search" placeholder="Nome ou número do tema" value="${esc(speakerQuery)}" ${editingId?'disabled':''}>`)}
-    <div id="speakerResults" class="oradores-list"></div>`
+    <div id="speakerResults" class="oradores-list"></div><div id="oradoresMessageSettings"></div>`
+  void mountModuleMessageSettings('oradoresMessageSettings',messageSettingsModule(),toast,settings=>{messageSettings=settings})
   mountRecordEditor(root(), 'speakerForm')
   const list=():void=>{
     const rows=Object.entries(speakers()).filter(([,item])=>item.tipo==='local'&&(item.secao??'s2')===selectedSection&&matchesSpeaker(item,speakerQuery,themes())).sort((a,b)=>Number(b[1].ativo)-Number(a[1].ativo)||a[1].nome.localeCompare(b[1].nome,'pt-BR'))
     document.getElementById('speakerResults')!.innerHTML=rows.map(([id,item])=>`<article class="oradores-card"><div class="oradores-card-head"><div><strong>${esc(item.nome)}</strong><small>${esc(SPEAKER_ROLE_LABEL[item.funcao])}</small></div><span class="status-pill">${item.ativo?'Ativo':'Inativo'}</span></div>
       <div class="oradores-card-grid"><div><span>Números dos temas no repertório</span><strong data-speaker-repertoire="${esc(id)}">${esc(repertoireNumbers(item.temaIds,themes())||'Nenhum tema')}</strong></div></div>
-      <details><summary>Contato e habilitações</summary><div class="oradores-card-grid"><div><span>Telefone</span><strong>${esc(item.telefone||'Não informado')}</strong></div><div><span>Saída</span><strong>${item.aprovadoParaSaida?'Aprovado':'Não aprovado'}</strong></div><div><span>A Sentinela</span><strong>${item.sentinelaDirigente?'Dirigente':item.sentinelaSubstituto?'Substituto':'—'}</strong></div></div></details>
+      <details data-ui-preference="speaker-contact:${esc(id)}"><summary>Contato e habilitações</summary><div class="oradores-card-grid"><div><span>Telefone</span><strong>${esc(item.telefone||'Não informado')}</strong></div><div><span>Saída</span><strong>${item.aprovadoParaSaida?'Aprovado':'Não aprovado'}</strong></div><div><span>A Sentinela</span><strong>${item.sentinelaDirigente?'Dirigente':item.sentinelaSubstituto?'Substituto':'—'}</strong></div></div></details>
       ${item.tipo==='local'&&!item.masterId?'<p class="notice warning">Vincule esta pessoa ao cadastro Admin para habilitar a programação.</p>':''}
       <h3>Próximas designações</h3><div class="oradores-list">${assignmentEntries(data,id,today(),selectedSection==='s1'?planning.s1Time:planning.s2Time).map(entry=>`<div class="module-list-row"><div><strong>${esc(formatSpeakerDate(entry.date))}</strong><small>${esc(entry.text)}</small></div></div>`).join('')||'<p class="form-help">Nenhuma designação futura.</p>'}</div>
       <div class="service-actions">${canEditPeople()?`<button class="btn btn-ghost" data-edit-speaker="${esc(id)}">Editar</button>`:''}<button data-notify-speaker="${esc(id)}" class="btn btn-primary" ${assignmentEntries(data,id,today(),selectedSection==='s1'?planning.s1Time:planning.s2Time).length?'':'disabled'}>Preparar mensagem das designações</button></div></article>`).join('')||empty('Nenhum orador encontrado.')
@@ -490,7 +501,7 @@ function renderThemes():void {
     document.querySelectorAll<HTMLButtonElement>('[data-edit-theme]').forEach(button=>button.addEventListener('click',()=>{editingId=button.dataset.editTheme!;renderThemes()}))
   }
   document.getElementById('themeSearch')?.addEventListener('input',event=>{themeQuery=(event.target as HTMLInputElement).value;list()})
-  document.querySelectorAll<HTMLButtonElement>('[data-theme-filter]').forEach(button=>button.addEventListener('click',()=>{themeFilter=button.dataset.themeFilter as ThemeFilter;list()}))
+  document.querySelectorAll<HTMLButtonElement>('[data-theme-filter]').forEach(button=>button.addEventListener('click',()=>{themeFilter=button.dataset.themeFilter as ThemeFilter;preferences.set('themeFilter',themeFilter);list()}))
   document.getElementById('themesPdf')?.addEventListener('click',event=>{
     const rows=filteredThemeRows(data,today(),themeFilter,themeQuery),label=THEME_FILTER_LABELS[themeFilter],query=themeQuery
     void downloadOperationalReport(event.currentTarget as HTMLButtonElement,async()=>{const {createThemesReportPdf}=await import('./oradores-reports');return createThemesReportPdf(rows,label,query,today())},`temas-${themeFilter}.pdf`)
@@ -516,18 +527,20 @@ function renderCongregations():void {
   const selected=congregations()[selectedCongregationId]
   const future=Object.values(schedule()).filter(item=>item.data>=today()&&visibleSchedule(item)&&item.tipo!=='discurso_local'&&scheduleCongregationId(item)===selectedCongregationId).sort((a,b)=>a.data.localeCompare(b.data))
   const confirmed=future.filter(item=>item.status==='confirmado')
-  root().innerHTML=`${sectionTitle('Congregações')}<div class="service-actions">${canEditShared()?'<button id="newCongregation" class="btn btn-primary">Nova congregação</button>':''}</div>${congregationEditor()}
+  root().innerHTML=`${sectionTitle('Intercâmbio e congregações')}<div class="service-actions">${canEditShared()?'<button id="newCongregation" class="btn btn-primary">Nova congregação</button>':''}</div>${congregationEditor()}
     <label class="form-field context-select"><span>Congregação</span><select id="congregationContext" class="form-select">${rows.map(([id,item])=>option(id,item.nome,selectedCongregationId)).join('')}</select></label>
     ${selected?`<article class="oradores-card"><div class="oradores-card-head"><div><strong>${esc(selected.nome)}</strong><small>${esc([selected.tipo==='local'?'Local':'Visitante',selected.cidade].filter(Boolean).join(' · '))}</small></div><span class="status-pill">${selected.ativa?'Ativa':'Inativa'}</span></div>
       <div class="oradores-card-grid"><div><span>Contato</span><strong>${esc(selected.contato||'Não informado')}</strong></div><div><span>Telefone</span><strong>${esc(selected.telefone||'Não informado')}</strong></div><div><span>Reunião</span><strong>${esc([selected.diaReuniao,selected.horario].filter(Boolean).join(' às ')||'Não informada')}</strong></div><div><span>Endereço</span><strong>${esc(selected.localizacao||'Não informado')}</strong></div></div>
       <div class="service-actions">${canEditShared()||selected.tipo==='local'?`<button class="btn btn-ghost" data-edit-congregation="${esc(selectedCongregationId)}">Editar</button>`:'<p class="form-help">Cadastro visitante compartilhado, editável pelos responsáveis das duas seções.</p>'}</div>
-      ${selected.tipo==='visitante'?`<details class="form-panel"><summary>Oferecer datas disponíveis · ${selected.horizonteDatas??90} dias</summary><div id="availableDatesPanel"></div></details>
-      <details class="form-panel"><summary>Intercâmbios · ${future.length} futuro(s)</summary><p class="form-help">${confirmed.length} confirmado(s)${future.length>confirmed.length?` · ${future.length-confirmed.length} ainda não finalizado(s)`:''}. A mensagem inclui somente os confirmados.</p><div class="oradores-list">${future.map(item=>scheduleCard('',item,false)).join('')||empty('Nenhum intercâmbio futuro com esta congregação.')}</div><button id="notifyCongregationExchanges" class="btn btn-primary" ${confirmed.length?'':'disabled'}>Preparar arranjo finalizado</button></details>`:''}</article>`:empty('Nenhuma congregação cadastrada.')}`
+      ${selected.tipo==='visitante'?`<details class="form-panel" data-ui-preference="available-dates"><summary>Oferecer datas disponíveis · ${selected.horizonteDatas??90} dias</summary><div id="availableDatesPanel"></div></details>
+      <details class="form-panel" data-ui-preference="exchanges"><summary>Intercâmbios · ${future.length} futuro(s)</summary><p class="form-help">${confirmed.length} confirmado(s)${future.length>confirmed.length?` · ${future.length-confirmed.length} ainda não finalizado(s)`:''}. A mensagem inclui somente os confirmados.</p><div class="oradores-list">${future.map(item=>scheduleCard('',item,false)).join('')||empty('Nenhum intercâmbio futuro com esta congregação.')}</div><button id="notifyCongregationExchanges" class="btn btn-primary" ${confirmed.length?'':'disabled'}>Preparar arranjo finalizado</button></details>`:''}</article>`:empty('Nenhuma congregação cadastrada.')}<div id="oradoresMessageSettings"></div>`
+  void mountModuleMessageSettings('oradoresMessageSettings',messageSettingsModule(),toast,settings=>{messageSettings=settings})
   mountRecordEditor(root(), 'congregationForm')
   fieldHelp(root(),'[name="localizacao"]','Endereço escrito: rua, número e bairro. Vai nas mensagens e PDFs.')
   fieldHelp(root(),'[name="mapa"]','Link do mapa, Plus Code com cidade ou coordenadas. Usado apenas no ICS.')
-  renderAvailableDates(selected?.horizonteDatas??90)
-  document.getElementById('congregationContext')?.addEventListener('change',event=>{if(!allowLeave()){(event.currentTarget as HTMLSelectElement).value=selectedCongregationId;return}selectedCongregationId=(event.currentTarget as HTMLSelectElement).value;renderCongregations()})
+  const horizon=preferences.get(`horizon:${selectedCongregationId}`,selected?.horizonteDatas??90)
+  renderAvailableDates([90,180,365].includes(horizon)?horizon:90)
+  document.getElementById('congregationContext')?.addEventListener('change',event=>{if(!allowLeave()){(event.currentTarget as HTMLSelectElement).value=selectedCongregationId;return}selectedCongregationId=(event.currentTarget as HTMLSelectElement).value;preferences.set('congregation',selectedCongregationId);renderCongregations()})
   document.getElementById('newCongregation')?.addEventListener('click',()=>{editingId='new';renderCongregations()})
   document.getElementById('cancelCongregationEdit')?.addEventListener('click',()=>{editingId='';renderCongregations()})
   document.getElementById('congregationForm')?.addEventListener('submit',event=>{event.preventDefault();void saveCongregation(event.currentTarget as HTMLFormElement)})
@@ -580,13 +593,14 @@ async function saveCongregation(form:HTMLFormElement):Promise<void>{
       return
     }finally{delete form.dataset.saving}
   }
-  form.dataset.saving='yes'
   const id=editingId==='new'?newSpeakerId('congregacao'):editingId,horizon=Number(values.get('horizonteDatas')),tipo=String(values.get('tipo')) as 'local'|'visitante'
   if(editingId!=='new'&&congregations()[id]?.tipo==='local'&&(congregations()[id]?.secao??'s2')!==selectedSection){formError(form,'Esta congregação local pertence à outra seção.');return}
+  if(tipo==='local'&&values.get('ativa')==='on'&&Object.entries(congregations()).some(([key,c])=>key!==id&&c.tipo==='local'&&c.ativa!==false&&(c.secao??'s2')===selectedSection)){formError(form,'Já existe uma congregação local ativa nesta seção. Edite o cadastro existente.');return}
+  form.dataset.saving='yes'
   const item:SpeakerCongregation={nome:name,cidade:city,tipo,ativa:values.get('ativa')==='on',contato:String(values.get('contato')).trim(),telefone:phoneDigits(String(values.get('telefone'))),diaReuniao:String(values.get('diaReuniao')).trim(),horario:String(values.get('horario')),horizonteDatas:([90,180,365].includes(horizon)?horizon:90) as 90|180|365,localizacao:address,mapa:cleanAddress(String(values.get('mapa') ?? '')),observacoes:String(values.get('observacoes')).trim(),...(tipo==='local'?{secao:selectedSection}:{})}
   try{await set(child(oradoresCongregacoesRef,id),item);congregations()[id]=item;selectedCongregationId=id;dirty=false;editingId='';renderCongregations()}catch{toast('Não foi possível salvar')}finally{delete form.dataset.saving}
 }
-async function deleteCongregation():Promise<void>{const id=editingId,item=congregations()[id];if(!item||Object.values(schedule()).some(row=>scheduleCongregationId(row)===id)){toast('Congregação com histórico deve ser inativada, não excluída');return}if(!confirm(`Excluir ${item.nome}?`))return;try{await set(child(oradoresCongregacoesRef,id),null);delete congregations()[id];dirty=false;editingId='';renderCongregations()}catch{toast('Não foi possível excluir')}}
+async function deleteCongregation():Promise<void>{const id=editingId,item=congregations()[id];if(!item||congregationInUse(id,schedule(),speakers())){toast('Congregação com vínculos deve ser inativada, não excluída');return}if(!confirm(`Excluir ${item.nome}?`))return;try{await set(child(oradoresCongregacoesRef,id),null);delete congregations()[id];dirty=false;editingId='';renderCongregations()}catch{toast('Não foi possível excluir')}}
 
 function eventEditor():string {
   if(!editingId||!canEditShared())return''
@@ -611,35 +625,14 @@ function renderAvailableDates(horizon=90):void {
   const panel=document.getElementById('availableDatesPanel');if(!panel)return
   const local=Object.values(congregations()).find(c=>c.tipo==='local'&&(c.secao??'s2')===selectedSection)
   const dates=local?availableDates(data,events,planning,today(),horizon,selectedSection):[]
-  panel.innerHTML=`<label class="form-field"><span>Prazo desta mensagem</span><select id="availableHorizon">${[90,180,365].map(value=>option(String(value),`${value} dias`,String(horizon))).join('')}</select></label><p class="form-help">Padrão salvo na ficha da congregação. Escolha abaixo somente as datas que deseja oferecer; abrir o WhatsApp não envia a mensagem automaticamente.</p><p class="form-help">${esc(local?.nome||'Cadastre a congregação local e configure o dia da reunião.')}. Somente datas sem programação local; saídas não ocupam a reunião.</p><div style="max-height:240px;overflow:auto">${dates.map(date=>`<label style="display:block"><input type="checkbox" data-available-date="${date}"> ${esc(formatSpeakerDate(date))} · ${esc((selectedSection==='s1'?planning.s1Time:planning.s2Time)||local?.horario||'Horário a confirmar')}</label>`).join('')||empty('Nenhuma data disponível neste intervalo.')}</div><button id="sendAvailableDates" class="btn btn-primary" disabled>Preparar mensagem com datas selecionadas</button>`
-  document.getElementById('availableHorizon')?.addEventListener('change',event=>renderAvailableDates(Number((event.target as HTMLSelectElement).value)))
+  panel.innerHTML=`<label class="form-field"><span>Prazo desta mensagem</span><select id="availableHorizon">${[90,180,365].map(value=>option(String(value),`${value} dias`,String(horizon))).join('')}</select></label><p class="form-help">Prazo inicial da ficha; sua escolha fica lembrada neste navegador. Escolha abaixo somente as datas que deseja oferecer; abrir o WhatsApp não envia a mensagem automaticamente.</p><p class="form-help">${esc(local?.nome||'Cadastre a congregação local e configure o dia da reunião.')}. Somente datas sem programação local; saídas não ocupam a reunião.</p><div style="max-height:240px;overflow:auto">${dates.map(date=>`<label style="display:block"><input type="checkbox" data-available-date="${date}"> ${esc(formatSpeakerDate(date))} · ${esc((selectedSection==='s1'?planning.s1Time:planning.s2Time)||local?.horario||'Horário a confirmar')}</label>`).join('')||empty('Nenhuma data disponível neste intervalo.')}</div><button id="sendAvailableDates" class="btn btn-primary" disabled>Preparar mensagem com datas selecionadas</button>`
+  document.getElementById('availableHorizon')?.addEventListener('change',event=>{const value=Number((event.target as HTMLSelectElement).value);preferences.set(`horizon:${selectedCongregationId}`,value);renderAvailableDates(value)})
   panel.querySelectorAll<HTMLInputElement>('[data-available-date]').forEach(input=>input.addEventListener('change',()=>{const button=panel.querySelector<HTMLButtonElement>('#sendAvailableDates');if(button)button.disabled=!panel.querySelector('[data-available-date]:checked')}))
   document.getElementById('sendAvailableDates')?.addEventListener('click',()=>{
     const selected=[...panel.querySelectorAll<HTMLInputElement>('[data-available-date]:checked')].map(input=>input.dataset.availableDate!)
     if(!selected.length){toast('Selecione pelo menos uma data');return}
     showMessagePreview({id:'oradoresMessagePreview',title:`Datas para ${congregations()[selectedCongregationId]?.nome||'congregação'}`,message:availableMessage(data,selectedCongregationId,selected,selectedSection==='s1'?planning.s1Time:planning.s2Time,messageSettings.meetingText,selectedSection),phone:congregations()[selectedCongregationId]?.telefone||'',toast})
   })
-}
-function renderPending():void {
-  const rows=speakerPendingItems(data,today()).filter(item=>visibleSchedule(schedule()[item.recordId]!))
-  root().innerHTML=`${sectionTitle('Pendências')}<p class="form-help">Próximos 90 dias · ${rows.length} programação(ões) para resolver. Toque em uma pendência para ir à ação correspondente.</p><div class="oradores-list">${rows.map(item=>`<button class="oradores-pending severity-${item.severity}" data-pending-id="${esc(item.recordId)}" data-pending-action="${item.action}"><span><strong>${esc(item.title)}</strong><small>${esc(item.detail)}</small></span><span aria-hidden="true">›</span></button>`).join('')||empty('Tudo em dia nos próximos 90 dias.')}</div>`
-  document.querySelectorAll<HTMLButtonElement>('[data-pending-id]').forEach(button=>button.addEventListener('click',()=>{
-    const id=button.dataset.pendingId!,action=button.dataset.pendingAction!,item=schedule()[id]
-    if(!item||!allowLeave())return
-    selectedMonth=item.data.slice(0,7);localStorage.setItem('noroeste_oradores_month',selectedMonth)
-    scheduleQuery='';scheduleFilter='';onlyFuture=false;scheduleDraft=null
-    void openScreen('programacao').then(()=>{
-      if(screen!=='programacao'||!schedule()[id])return
-      if(action==='confirm'||action==='reconfirm'){
-        const target=[...root().querySelectorAll<HTMLButtonElement>(action==='confirm'?'[data-confirm-schedule]':'[data-reconfirm-schedule]')].find(control=>(action==='confirm'?control.dataset.confirmSchedule:control.dataset.reconfirmSchedule)===id)
-        focusCorrection(target??null)
-      } else {
-        editingId=id;renderSchedule()
-        const target=root().querySelector<HTMLElement>(`#speakerScheduleForm [name="${action}"]`)
-        focusCorrection(target??null)
-      }
-    })
-  }))
 }
 function unavailableThemeIds():Set<string>{return new Set([...themeUsageIndex(data,today())].filter(([,use])=>use.past||use.pending).map(([id])=>id))}
 function renderEmergency():void {

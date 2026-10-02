@@ -1,5 +1,12 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
+
+test('períodos do Quadro incluem anúncios do Admin sem depender de PDF de módulo',()=>{
+ const item={id:'aviso',modulo:'admin',periodo:'2026-11',inicio:'2026-11-01',fim:'2026-11-30',nome:'Aviso.pdf',criadoEm:'2026-10-01T12:00:00Z'}
+ const now=Date.parse('2026-10-02T12:00:00Z')
+ assert.deepEqual(publicDocumentMonths([item],now),[])
+ assert.deepEqual(publicDocumentMonths([item],now,true),['2026-11'])
+})
 import { documentCoversMonth, groupPublicDocuments, officialDocumentId, publicDocumentMonths } from '../src/modules/agenda-documents-domain.ts'
 
 const doc = (overrides = {}) => ({ id:'x', modulo:'tarefas', tipo:'modulo', periodo:'2026-09', inicio:'2026-09-01', fim:'2026-09-30', origemPeriodoId:'2026-09', nome:'arquivo.pdf', url:'https://example.test/a.pdf', criadoEm:'2026-09-01T10:00:00.000Z', ...overrides })

@@ -153,22 +153,18 @@ function render(): void {
 }
 function renderNavigation(): void {
   const host = document.getElementById('escalaNav')
-  if (host) renderWorkspaceNav(host, 'Escala TPL', 'escalaAtual', tab, [
-    { id:'escalaAtual', label:'Escala', children:[{ id:'escalaAtual', label:'Escala do mês' }, { id:'pendencias', label:'Pendências' }] },
-    { id:'participantes', label:'Participantes', children:[{ id:'participantes', label:'Pessoas' }, { id:'disponibilidade', label:'Disponibilidade' }, { id:'mensagens', label:'Confirmações' }] },
-    { id:'config', label:'Configurações', children:[{ id:'config', label:'Regras e mensagens' }, { id:'locais', label:'Locais e horários' }] },
+  if (host) renderWorkspaceNav(host, 'Escala TPL', 'escalaAtual', ['disponibilidade','mensagens'].includes(tab)?'participantes':tab, [
+    { id:'escalaAtual', label:'Escala' },
+    { id:'participantes', label:'Pessoas' },
+    { id:'config', label:'Mais opções', children:[{ id:'config', label:'Regras e mensagens' }, { id:'locais', label:'Locais e horários' }, { id:'pendencias', label:'Conferência' }] },
   ], id => { void go(id as Tab) })
 }
 function renderIndex(): void {
   root().innerHTML = '<div style="margin-bottom:14px"><h2 style="font-size:1.05rem;color:#1A6B3C">Escala TPL</h2></div><div id="escalaMenu"></div>'
   const items: ItemMenu[] = [
     { id: 'escalaAtual', titulo: 'Escala do mês', subtitulo: 'Gerar, revisar, editar e publicar', icone: '▣', corFundo: '#003F72' },
-    { id: 'participantes', titulo: 'Participantes', subtitulo: 'Cadastro e regras de participação', icone: '♙', corFundo: '#1A6B3C' },
-    { id: 'disponibilidade', titulo: 'Disponibilidade', subtitulo: 'Dias, locais e horários disponíveis', icone: '◫', corFundo: '#006EB6' },
-    { id: 'locais', titulo: 'Locais', subtitulo: 'Pontos de carrinho, dias e horários', icone: '⌖', corFundo: '#8A5B00' },
-    { id: 'mensagens', titulo: 'Confirmar disponibilidade', subtitulo: 'Rascunho administrativo por participante', icone: '✉', corFundo: '#7E3AF2' },
-    { id: 'pendencias', titulo: 'Pendências', subtitulo: 'Conflitos e dados que precisam de atenção', icone: '!', corFundo: '#B3261E' },
-    { id: 'config', titulo: 'Configuração', subtitulo: 'Disponibilidade, exceções e impressão', icone: '⚙', corFundo: '#5C6062' },
+    { id: 'participantes', titulo: 'Pessoas', subtitulo: 'Cadastro, disponibilidade e mensagens', icone: '♙', corFundo: '#1A6B3C' },
+    { id: 'config', titulo: 'Mais opções', subtitulo: 'Locais, regras, impressão e conferência', icone: '⚙', corFundo: '#5C6062' },
   ]
   renderMenuCards(root().querySelector<HTMLElement>('#escalaMenu')!, items, id => { void go(id as Tab) })
 }
@@ -266,7 +262,7 @@ function renderParticipants(): void {
       if (!isAdmin()) { toast('Somente o Admin pode editar participantes'); return }
       participantModal(button.dataset['person']!)
     }))
-    document.querySelectorAll<HTMLButtonElement>('[data-person-availability]').forEach(button=>button.addEventListener('click',()=>{selectedParticipantId=button.dataset.personAvailability!;void go('disponibilidade')}))
+    document.querySelectorAll<HTMLButtonElement>('[data-person-availability]').forEach(button=>button.addEventListener('click',()=>openPersonAvailability(button.dataset.personAvailability!)))
     document.querySelectorAll<HTMLButtonElement>('[data-person-confirmation]').forEach(button=>button.addEventListener('click',()=>{selectedParticipantId=button.dataset.personConfirmation!;void go('mensagens')}))
   }
   list(); document.getElementById('pSearch')!.addEventListener('input', list); document.getElementById('pNew')?.addEventListener('click', () => participantModal(''))
@@ -348,13 +344,25 @@ function participantReferencesTo(id: string): string[] {
     .filter(([otherId, participant]) => otherId !== id && participant.onlyWithId === id)
     .map(([otherId]) => otherId)
 }
+function openPersonAvailability(id:string):void {
+  if(!participants[id]||participants[id]?.active===false){toast('Ative o participante para editar a disponibilidade.');return}
+  selectedParticipantId=id
+  document.getElementById('scaleAvailabilityDialog')?.remove()
+  const overlay=document.createElement('div');overlay.id='scaleAvailabilityDialog';overlay.className='modal-overlay'
+  overlay.innerHTML=`<div class="modal" role="dialog" aria-modal="true" aria-labelledby="personAvailabilityTitle"><h2 id="personAvailabilityTitle">Disponibilidade de ${esc(name(id))}</h2><div id="participantAvailability"></div><button id="closePersonAvailability" class="btn btn-primary" type="button">Concluir</button></div>`
+  document.body.appendChild(overlay)
+  document.getElementById('closePersonAvailability')!.addEventListener('click',()=>{overlay.remove();renderParticipants()})
+  renderAvailability()
+}
 function renderAvailability(): void {
+  const host=document.getElementById('participantAvailability')??root()
   const people = orderedPeople(true), local = locals[selectedLocalId]
   if (!selectedParticipantId || participants[selectedParticipantId]?.active === false) selectedParticipantId = people[0]?.[0] ?? ''
-  if (!local || !selectedParticipantId) { root().innerHTML = '<p class="empty-state">Cadastre um local e participantes ativos primeiro.</p>'; return }
+  if (!local || !selectedParticipantId) { host.innerHTML = '<p class="empty-state">Cadastre um local e participantes ativos primeiro.</p>'; return }
   const marked = availability[selectedLocalId]?.[selectedParticipantId] ?? {}, days = local.daysActive ?? [], slots = localSlots(local), labels = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb']
-  root().innerHTML = `<div class="module-form-grid" style="margin-bottom:12px"><div class="form-group"><label class="form-label">Local</label><select id="aLocal" class="form-select">${orderedLocals().map(([id, item]) => `<option value="${esc(id)}" ${id === selectedLocalId ? 'selected' : ''}>${esc(item.name ?? id)}</option>`).join('')}</select></div><div class="form-group"><label class="form-label">Participante</label><select id="aPerson" class="form-select">${people.map(([id]) => `<option value="${esc(id)}" ${id === selectedParticipantId ? 'selected' : ''}>${esc(name(id))}</option>`).join('')}</select></div></div><p class="form-help" style="margin-bottom:10px">Toque no dia para marcar todos os seus horários. Cada alteração é salva automaticamente.</p><p id="availabilitySaveStatus" role="status" aria-live="polite"></p><div class="availability-wrap"><table class="availability-table"><thead><tr><th>Dia</th>${slots.map(time => `<th><button class="table-toggle" data-atime="${time}">${time}</button></th>`).join('')}</tr></thead><tbody>${days.map(dow => `<tr><th><button class="table-toggle" data-aday="${dow}">${labels[dow]}</button></th>${slots.map(time => { const key = availabilityKey(dow, time); return `<td data-time="${esc(time)}"><input aria-label="${labels[dow]} às ${esc(time)}" type="checkbox" data-avail="${key}" ${marked[key] ? 'checked' : ''}></td>` }).join('')}</tr>`).join('')}</tbody></table></div>`
-  fieldHelp(root(),'#aPerson','A disponibilidade vale para o local selecionado. Marcar ou desmarcar salva imediatamente.')
+  host.innerHTML = `<div class="module-form-grid" style="margin-bottom:12px"><div class="form-group"><label class="form-label">Local</label><select id="aLocal" class="form-select">${orderedLocals().map(([id, item]) => `<option value="${esc(id)}" ${id === selectedLocalId ? 'selected' : ''}>${esc(item.name ?? id)}</option>`).join('')}</select></div><div class="form-group"><label class="form-label">Participante</label><select id="aPerson" class="form-select">${people.map(([id]) => `<option value="${esc(id)}" ${id === selectedParticipantId ? 'selected' : ''}>${esc(name(id))}</option>`).join('')}</select></div></div><p class="form-help" style="margin-bottom:10px">Toque no dia para marcar todos os seus horários. Cada alteração é salva automaticamente.</p><p id="availabilitySaveStatus" role="status" aria-live="polite"></p><div class="availability-wrap"><table class="availability-table"><thead><tr><th>Dia</th>${slots.map(time => `<th><button class="table-toggle" data-atime="${time}">${time}</button></th>`).join('')}</tr></thead><tbody>${days.map(dow => `<tr><th><button class="table-toggle" data-aday="${dow}">${labels[dow]}</button></th>${slots.map(time => { const key = availabilityKey(dow, time); return `<td data-time="${esc(time)}"><input aria-label="${labels[dow]} às ${esc(time)}" type="checkbox" data-avail="${key}" ${marked[key] ? 'checked' : ''}></td>` }).join('')}</tr>`).join('')}</tbody></table></div>`
+  fieldHelp(host,'#aPerson','A disponibilidade vale para o local selecionado. Marcar ou desmarcar salva imediatamente.')
+  if(host.id==='participantAvailability')host.querySelector<HTMLElement>('#aPerson')!.closest<HTMLElement>('.form-group')!.hidden=true
   document.getElementById('aLocal')!.addEventListener('change', event => { selectedLocalId=(event.target as HTMLSelectElement).value;localStorage.setItem(ESCALA_LOCAL_KEY,selectedLocalId);renderAvailability() })
   document.getElementById('aPerson')!.addEventListener('change', e => { selectedParticipantId = (e.target as HTMLSelectElement).value; renderAvailability() })
   document.querySelectorAll<HTMLInputElement>('[data-avail]').forEach(box => box.addEventListener('change', () => void saveAvailability([box.dataset['avail']!], box.checked)))
@@ -367,7 +375,7 @@ async function toggleGroup(keys: string[]): Promise<void> {
 }
 async function saveAvailability(keys: string[], on: boolean, rerender = false): Promise<void> {
   const participantId=selectedParticipantId,localId=selectedLocalId
-  const release=editorBusy(root())
+  const release=editorBusy(document.getElementById('participantAvailability')?.closest<HTMLElement>('.modal')??root())
   const status=document.getElementById('availabilitySaveStatus')
   if(status)status.textContent='Salvando disponibilidade…'
   const stamp = now(), patch: Record<string, unknown> = { [`participants/${participantId}/availabilityUpdatedAt`]: stamp }

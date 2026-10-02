@@ -1,5 +1,6 @@
-import { collectAnnouncementEvents, eventsInFeedWindow, type AnnouncementEvent } from './individual-domain.ts'
+import { collectAnnouncementEvents, eventsInFeedWindow, type AnnouncementEvent, type AgendaCalendarEvent } from './individual-domain.ts'
 import { isValidCivilDate, fortalezaToday } from './civil-date.ts'
+import { resolveSpeakerMasterId } from './oradores-editor-domain.ts'
 import type { AgendaConfig, AgendaPublicDocument } from '../types.ts'
 
 export const QUADRO_SOURCES = ['tarefas','oradores','escala','geral','quadro'] as const
@@ -9,6 +10,15 @@ export interface QuadroData {
   events:AnnouncementEvent[]; notices:GeneralNotice[];
   agenda:{config:AgendaConfig;documentos:Record<string,AgendaPublicDocument>};
   completedSources:string[]; failedSources:string[];
+}
+
+export function quadroCalendarEvents(data:Pick<QuadroData,'events'|'notices'>, month:string):AgendaCalendarEvent[] {
+  if(!/^\d{4}-(0[1-9]|1[0-2])$/.test(month))return []
+  const events:AgendaCalendarEvent[]=[
+    ...data.events.map(e=>({...e,detail:[e.detail,e.people.join(', ')].filter(Boolean).join(' · ')})),
+    ...data.notices.map(n=>({id:`geral:${n.id}`,source:'geral' as const,date:n.date,title:n.title,detail:n.description,status:'futuro' as const})),
+  ]
+  return events.filter(e=>isValidCivilDate(e.date)&&e.date.startsWith(month)).sort((a,b)=>a.date.localeCompare(b.date)||(a.time??'').localeCompare(b.time??''))
 }
 const row=(v:any):Record<string,any>=>v&&typeof v==='object'&&!Array.isArray(v)?v:{}
 const text=(v:unknown,max=300):string=>typeof v==='string'?v.trim().slice(0,max):''
@@ -28,7 +38,8 @@ export function quadroEvents(root:Record<string,any>,completed:string[]= [...QUA
     return [talk.oradorId,talk.oradorSecundarioId].filter(Boolean).every(id=>{
       const speaker=speakers[id]
       if(!speaker||speaker.ativo===false)return false
-      return speaker.tipo!=='local'||Boolean(master[speaker.masterId]&&master[speaker.masterId].active!==false)
+      const masterId=resolveSpeakerMasterId(speaker,master,row(tasks.people))
+      return speaker.tipo!=='local'||Boolean(master[masterId]&&master[masterId].active!==false)
     })
   }).map(event=>{
     if(event.source==='tarefas') {

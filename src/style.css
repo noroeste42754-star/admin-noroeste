@@ -1091,6 +1091,7 @@ button:focus-visible, summary:focus-visible { outline:2px solid var(--blue-mid);
 
 /* Oradores */
 #oradoresRoot > .module-section-title { display:none; }
+#oradoresRoot > .module-section-title[data-substitution-title] { display:flex; }
 .oradores-period { max-width:390px; margin-bottom:14px; }
 .oradores-list { display:grid; gap:10px; margin-top:16px; }
 .oradores-card, .entity-card { border:1px solid var(--border); border-radius:10px; background:var(--surface); padding:14px; }
@@ -1204,6 +1205,13 @@ button:focus-visible, summary:focus-visible { outline:2px solid var(--blue-mid);
 /* Public board: no identity picker or personal schedule. */
 .quadro-standalone{max-width:1040px;margin:auto;padding:20px 16px 48px}
 .quadro-root{min-width:0}
+.quadro-root .agenda-toolbar{grid-template-columns:40px minmax(0,240px) 40px auto;align-items:center}
+.quadro-root .agenda-toolbar input{min-width:0;width:100%;max-width:none}
+.quadro-root #quadroToday{font-size:.85rem;min-width:48px}
+@media(max-width:380px){.quadro-root .agenda-toolbar{grid-template-columns:36px minmax(0,1fr) 36px}.quadro-root #quadroToday{grid-column:1 / -1;justify-self:center}.quadro-tabs{display:grid;grid-template-columns:1fr 1fr}.quadro-tabs .btn{white-space:normal;font-size:.78rem}}
+.quadro-root .agenda-event{grid-template-columns:90px minmax(0,1fr)}
+.quadro-root .agenda-event>div{min-width:0;overflow-wrap:anywhere}
+@media(max-width:600px){.quadro-root .agenda-event{grid-template-columns:minmax(0,1fr)}}
 .quadro-header{display:flex;justify-content:space-between;align-items:center;gap:12px;margin-bottom:16px}
 .quadro-header h1{font-size:1.5rem;color:var(--blue-deep);margin:0}
 .quadro-header p{color:var(--ink-3);margin:6px 0 0}
@@ -1218,4 +1226,4 @@ button:focus-visible, summary:focus-visible { outline:2px solid var(--blue-mid);
 .quadro-notices{margin-top:16px}
 .quadro-root .agenda-event p,.quadro-root .notice p{white-space:pre-line;overflow-wrap:anywhere}
 .quadro-root .agenda-module-download small{display:block;overflow-wrap:anywhere}
-@media(max-width:480px){.quadro-standalone{padding:14px 10px 32px}.quadro-header{align-items:flex-start}.quadro-header h1{font-size:1.25rem}.quadro-root .agenda-toolbar{flex-wrap:wrap}.quadro-root .agenda-toolbar input{min-width:0;max-width:170px}.quadro-root .agenda-module-download{flex-wrap:wrap}.quadro-root .agenda-module-download>div{min-width:0;flex:1}}
+@media(max-width:480px){.quadro-standalone{padding:14px 10px 32px}.quadro-header{align-items:flex-start}.quadro-header h1{font-size:1.25rem}.quadro-root .agenda-toolbar input{min-width:0;max-width:none}.quadro-root .agenda-module-download>div{min-width:0}}

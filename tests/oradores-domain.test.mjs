@@ -163,7 +163,7 @@ test('comparação da publicação considera somente dados do PDF e saídas futu
   assert.notEqual(publicationSource(root,'2026-09'),source)
   delete root.programacao.p.oradorSecundarioNome
   root.congregacoes.c.observacoes='Endereço usado no PDF antigo'
-  assert.notEqual(publicationSource(root,'2026-09'),source)
+  assert.equal(publicationSource(root,'2026-09'),source,'Observações internas não fazem parte do PDF público')
 })
 
 test('pendências: um item por programação, apenas hoje até 90 dias, com destino de resolução',()=>{

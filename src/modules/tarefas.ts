@@ -1,4 +1,5 @@
 import { focusCorrection, fieldHelp } from '../ui/field-guidance'
+import { localPreferences, persistDisclosures } from '../ui/local-preferences'
 import { substitutionDialog } from '../ui/substitution-dialog'
 import { confirmAdvisoryWarnings } from '../ui/advisory-confirmation'
 import { closeRecordEditor, mountRecordEditor } from '../ui/record-editor'
@@ -36,7 +37,6 @@ import {
   canonicalMeetingType,
   computeGeneration,
   manualConflictReason,
-  meetingIsBlocked,
   meetingEntries,
   periodKeyForDate,
   personIsActive,
@@ -63,7 +63,7 @@ import { publishModulePeriod, renderPublicationStatus } from './module-publicati
 import { defaultModuleMessageSettings, mountModuleMessageSettings, type ModuleMessageSettings } from './module-message-settings'
 import { ApiError } from '../secure-api'
 
-type TarefasTab = 'indice' | 'escala' | 'participantes' | 'pendencias' | 'config'
+type TarefasTab = 'indice' | 'escala' | 'participantes' | 'config'
 
 const PRINT_FONT_KEY = 'noroeste_tarefas_print_font_pt'
 const PRINT_MIN_PT = 8
@@ -107,6 +107,7 @@ let taskMessageSettings=defaultModuleMessageSettings('tarefas')
 let congregationName = 'Noroeste'
 let masterPeople: Record<string, { name?: string; whatsapp?: string; active?: boolean; role?: string | null }> = {}
 let context: AppContext
+let stopDisclosures: (() => void) | undefined
 const TAREFAS_PERIOD_KEY = 'noroeste:tarefas:period'
 const TAREFAS_PERIOD_MODE_KEY = 'noroeste:tarefas:period-mode'
 const TAREFAS_PENDING_DATES_KEY = 'noroeste:tarefas:pending-dates'
@@ -236,7 +237,9 @@ export default function mount(ctx: AppContext): void {
     <div id="tarefasRoot">
       <div id="tarefasNav"></div><div id="tarefasContent"></div>
     </div>`
-  void openTarefasTab(ctx.overview?.pending?'pendencias':'escala')
+  stopDisclosures?.()
+  stopDisclosures=persistDisclosures(document.getElementById('tarefasContent')!,localPreferences(ctx.uid,'tarefas'))
+  void openTarefasTab('escala')
 }
 
 function ensureLoaded(): Promise<boolean> {
@@ -310,7 +313,6 @@ function renderContent(): void {
   }
   if (activeTab === 'escala') renderEscala()
   else if (activeTab === 'participantes') renderParticipantes()
-  else if (activeTab === 'pendencias') renderPendencias()
   else renderTaskConfig()
 }
 
@@ -318,7 +320,7 @@ function renderNavigation(): void {
   const host = document.getElementById('tarefasNav')
   if (host) renderWorkspaceNav(host, 'Tarefas', 'escala', activeTab, [
     { id:'escala', label:'Escala' }, { id:'participantes', label:'Pessoas' },
-    { id:'pendencias', label:'Pendências' }, { id:'config', label:'Configurações' },
+    { id:'config', label:'Mais opções' },
   ], id => { void openTarefasTab(id as TarefasTab) })
 }
 
@@ -329,8 +331,7 @@ function renderIndex(): void {
   const items: ItemMenu[] = [
     { id: 'escala', titulo: 'Escala', subtitulo: 'Escolha o período, gere e revise a escala', icone: '▣', corFundo: '#003F72' },
     { id: 'participantes', titulo: 'Pessoas', subtitulo: 'Participantes e vínculos com Admin', icone: '♙', corFundo: '#006EB6' },
-    { id: 'pendencias', titulo: 'Pendências', subtitulo: 'Disponibilidade e preparação do próximo período', icone: '!', corFundo: '#B3261E' },
-    { id: 'config', titulo: 'Configuração', subtitulo: 'Período, regras, datas e mensagens', icone: '⚙', corFundo: '#5C6062' },
+    { id: 'config', titulo: 'Mais opções', subtitulo: 'Regras, datas e mensagens', icone: '⚙', corFundo: '#5C6062' },
   ]
   renderMenuCards(content.querySelector<HTMLElement>('#tarefasMenu')!, items, id => { void openTarefasTab(id as TarefasTab) })
 }
@@ -362,9 +363,9 @@ function renderEscala(): void {
         <button id="btnGenerateScale" class="btn ${allPeriodMeetings.length ? 'btn-ghost' : 'btn-primary'}" type="button" ${locked ? 'disabled' : ''}>Gerar escala · ${activeRules} regras${normalizeTaskGroupTargets(planning.groupTargets).enabled?' · grupos':''}</button>
         <button id="btnTarefasPdf" class="btn btn-ghost" type="button" ${allPeriodMeetings.length ? '' : 'disabled'}>Baixar PDF</button>
         <button id="btnToggleTaskLock" class="btn ${locked ? 'btn-ghost' : 'btn-primary'}" type="button" ${allPeriodMeetings.length ? '' : 'disabled'}>${locked ? 'Reabrir para edição' : 'Publicar no Quadro'}</button>
-        <details><summary>Mais opções</summary><button id="btnClearTaskScale" class="btn btn-danger" type="button" ${locked || !allPeriodMeetings.length ? 'disabled' : ''}>Limpar escala</button></details>
+        <details data-ui-preference="scale-actions"><summary>Mais opções</summary><button id="btnClearTaskScale" class="btn btn-danger" type="button" ${locked || !allPeriodMeetings.length ? 'disabled' : ''}>Limpar escala</button></details>
       </div>
-      <details style="margin-top:12px;padding-top:10px;border-top:1px solid var(--border)">
+      <details data-ui-preference="generation-print-options" style="margin-top:12px;padding-top:10px;border-top:1px solid var(--border)">
         <summary style="cursor:pointer;font-size:.86rem;font-weight:700;color:var(--ink-2)">Refazer uma função ou ajustar a impressão</summary>
         <div class="module-form-grid" style="margin-top:10px">
           <div class="form-group" style="margin:0"><label class="form-label" for="tarefasGenerateRole">Função</label><select id="tarefasGenerateRole" class="form-select"><option value="">Escolha a função</option>${TASK_ROLES.map(role => `<option value="${role}" ${role === selectedGenerateRole ? 'selected' : ''}>${escapeHtml(TASK_ROLE_LABELS[role])}</option>`).join('')}</select></div>
@@ -374,14 +375,14 @@ function renderEscala(): void {
         <div style="display:flex;gap:8px;align-items:center;margin-top:12px"><label class="form-label" for="tarefasPrintFont" style="margin:0;white-space:nowrap">Letra do PDF</label><input id="tarefasPrintFont" class="form-input" type="range" min="${PRINT_MIN_PT}" max="${PRINT_MAX_PT}" step="1" value="${font}" style="padding:0;flex:1"><span id="tarefasPrintFontValue" style="min-width:42px;text-align:right;font-size:.82rem;font-weight:700;color:var(--ink-2)">${font} pt</span></div>
       </details>
     </div>
-    <details class="form-panel"><summary>Mensagem das designações do dia</summary><label class="form-field"><span>Data</span><select id="taskMessageDate">${[...new Set(allPeriodMeetings.map(meeting=>meeting.date).filter(Boolean))].map(date=>`<option value="${escapeHtml(date)}">${escapeHtml(formatDate(date))}</option>`).join('')}</select></label><button id="taskSendDay" class="btn btn-ghost" type="button" ${allPeriodMeetings.length?'':'disabled'}>Ver mensagem do dia</button></details>
+    <details class="form-panel" data-ui-preference="day-message"><summary>Mensagem das designações do dia</summary><label class="form-field"><span>Data</span><select id="taskMessageDate">${[...new Set(allPeriodMeetings.map(meeting=>meeting.date).filter(Boolean))].map(date=>`<option value="${escapeHtml(date)}">${escapeHtml(formatDate(date))}</option>`).join('')}</select></label><button id="taskSendDay" class="btn btn-ghost" type="button" ${allPeriodMeetings.length?'':'disabled'}>Ver mensagem do dia</button></details>
     <div class="task-desktop-scale">${taskDesktopTable(allPeriodMeetings)}</div>
     <div class="task-mobile-scale" style="display:flex;flex-direction:column;gap:8px">
       ${allPeriodMeetings.length
         ? allPeriodMeetings.map(meeting => meetingCard(meeting)).join('')
         : emptyState('Nenhuma reunião cadastrada neste período.')}
     </div>
-    ${preservedMeetings.length ? `<details class="form-panel" style="margin-top:12px"><summary>Registros preservados fora do período atual (${preservedMeetings.length})</summary><div class="module-option-list" style="margin-top:10px">${preservedMeetings.map(entry => `<div class="module-list-row"><div><strong>${escapeHtml(formatDate(entry.meeting.date))}</strong><small>${canonicalMeetingType(entry.meeting.type) === 'midweek' ? 'Meio de semana' : 'Fim de semana'} · ${assignmentCount(entry.meeting)} função(ões)</small></div></div>`).join('')}</div></details>` : ''}`
+    ${preservedMeetings.length ? `<details class="form-panel" data-ui-preference="preserved-records" style="margin-top:12px"><summary>Registros preservados fora do período atual (${preservedMeetings.length})</summary><div class="module-option-list" style="margin-top:10px">${preservedMeetings.map(entry => `<div class="module-list-row"><div><strong>${escapeHtml(formatDate(entry.meeting.date))}</strong><small>${canonicalMeetingType(entry.meeting.type) === 'midweek' ? 'Meio de semana' : 'Fim de semana'} · ${assignmentCount(entry.meeting)} função(ões)</small></div></div>`).join('')}</div></details>` : ''}`
 
   document.getElementById('taskSendDay')?.addEventListener('click',()=>{const date=(document.getElementById('taskMessageDate') as HTMLSelectElement).value;showTaskMessage(tasksDayMessage(date,pessoas,allPeriodMeetings,'',taskMessageSettings.meetingText))})
   document.getElementById('tarefasPrintFont')?.addEventListener('input', (event) => {
@@ -441,10 +442,9 @@ function renderEscala(): void {
     localStorage.setItem(TAREFAS_PERIOD_MODE_KEY, mode)
     selectedPeriodMonth = periodKeyForDate(`${selectedPeriodMonth}-01`, mode)
     localStorage.setItem(TAREFAS_PERIOD_KEY, selectedPeriodMonth)
-    void update(tarefasPlanejamentoRef, { periodMode:mode }).catch(()=>toast('O formato foi aplicado neste aparelho, mas não foi possível salvar o padrão.'))
     renderEscala()
   })
-  fieldHelp(content,'#tarefasPeriodMode','Mensal mostra um mês; bimestral reúne dois meses. A troca não apaga escalas.')
+  fieldHelp(content,'#tarefasPeriodMode','Mensal mostra um mês; bimestral reúne dois meses. Sua escolha fica salva neste navegador e não altera as escalas.')
   content.querySelectorAll<HTMLDetailsElement>('[data-meeting-key]').forEach(card=>card.addEventListener('toggle',()=>{const key=card.dataset.meetingKey!;if(card.open)expandedTaskMeetings.add(key);else expandedTaskMeetings.delete(key)}))
   bindAssignmentEditors()
   content.querySelectorAll<HTMLButtonElement>('[data-edit-meeting]').forEach(button=>button.addEventListener('click',()=>{
@@ -688,15 +688,16 @@ function renderTaskConfig(): void {
     <div class="form-panel" data-editor-scope><h3 style="margin-top:0">Regras do motor</h3><p class="form-help">Estas opções valem apenas para as próximas gerações. Regras de integridade continuam obrigatórias.</p><div class="engine-rule-list"><label><input id="taskRuleSpeakers" type="checkbox" ${rules.evitarConflitosOradores ? 'checked' : ''} ${canEditRules ? '' : 'disabled'}> Evitar designar quem tem discurso ou saída de Oradores na mesma data (S2)</label><label><input id="taskRulePresident" type="checkbox" ${rules.presidenteSegundaTarefa ? 'checked' : ''} ${canEditRules ? '' : 'disabled'}> Aproveitar o presidente em uma segunda tarefa mecânica</label><label><input id="taskRuleBalance" type="checkbox" ${rules.equilibrarDesignacoes ? 'checked' : ''} ${canEditRules ? '' : 'disabled'}> Equilibrar o total de designações</label><label><input id="taskRuleRepeat" type="checkbox" ${rules.evitarRepetirFuncao ? 'checked' : ''} ${canEditRules ? '' : 'disabled'}> Evitar repetir a mesma função</label></div>${canEditRules ? '<div class="scale-actions" style="margin-top:12px"><button id="saveTaskRules" class="btn btn-primary" type="button">Salvar regras</button><button id="restoreTaskRules" class="btn btn-ghost" type="button">Restaurar padrões</button></div>' : '<div class="notice">Somente o Admin pode alterar estas regras.</div>'}</div>
     <div class="form-panel" data-editor-scope><h3 style="margin-top:0">Distribuição por grupo</h3><p class="form-help">Defina a participação total desejada de cada grupo na escala. A meta é flexível: aptidão, folga e disponibilidade continuam valendo. Cada pessoa conta uma vez por reunião, mesmo fazendo duas tarefas. Os percentuais iniciais são apenas uma sugestão; nada muda até ativar e salvar.</p><label class="oradores-check"><input id="taskGroupEnabled" type="checkbox" ${groups.enabled?'checked':''} ${canEditRules?'':'disabled'}> Usar metas por grupo nas próximas gerações</label><div class="module-form-grid" style="margin-top:12px">${(['anciaos','servos','jovens'] as const).map(group=>`<label class="form-field"><span>${TASK_GROUP_LABELS[group]} (%)</span><input class="form-input task-group-percent" data-task-group="${group}" type="number" min="0" max="100" step="1" value="${groups[group]}" ${canEditRules?'':'disabled'}></label>`).join('')}<div class="form-field"><span>Demais</span><strong id="taskGroupRemaining">${groups.demais}% (restante automático)</strong></div></div><p id="taskGroupValidation" class="form-help" aria-live="polite">Jovem é a marcação do participante em Tarefas, não uma idade calculada. Sem cargo de ancião ou servo no Admin, a pessoa entra em Demais.</p>${canEditRules?'<button id="saveTaskGroups" class="btn btn-primary" type="button">Salvar distribuição</button>':'<div class="notice">Somente o Admin ou responsável por Tarefas pode alterar esta distribuição.</div>'}</div>
     <div class="form-panel"><h3 style="margin-top:0">Datas sem reunião</h3><div style="display:flex;gap:8px"><input id="taskExcludedDate" class="form-input" type="date"><button id="addTaskExcludedDate" class="btn btn-ghost" type="button">Adicionar</button></div><div class="module-option-list" style="margin-top:10px">${dates.map(date => `<div class="module-list-row"><strong>${escapeHtml(formatDate(date))}</strong><button class="btn btn-danger" data-remove-task-date="${escapeHtml(date)}" type="button">Remover</button></div>`).join('') || '<p class="empty-state">Nenhuma data excluída.</p>'}</div></div><div id="taskMessageSettings"></div>`
-  document.getElementById('taskRuleSpeakers')?.closest('.form-panel')?.insertAdjacentHTML('beforeend', '<details class="workspace-disclosure"><summary>Regras fixas sem liga/desliga</summary><p class="form-help">O motor sempre respeita pessoa ativa, função habilitada, tipo de reunião, folga e indisponibilidade cadastradas, reunião bloqueada e incompatibilidade entre funções. Também mantém as restrições de participação dos jovens. Essas proteções não são preferências de distribuição.</p></details>')
+  document.getElementById('taskRuleSpeakers')?.closest('.form-panel')?.insertAdjacentHTML('beforeend', '<details class="workspace-disclosure" data-ui-preference="fixed-rules"><summary>Regras fixas sem liga/desliga</summary><p class="form-help">O motor sempre respeita pessoa ativa, função habilitada, tipo de reunião, folga e indisponibilidade cadastradas, reunião bloqueada e incompatibilidade entre funções. Também mantém as restrições de participação dos jovens. Essas proteções não são preferências de distribuição.</p></details>')
   content.querySelectorAll<HTMLElement>(':scope > .form-panel').forEach((panel, index) => {
     const details = document.createElement('details')
+    details.dataset.uiPreference = ['engine-rules','group-targets','excluded-dates'][index]!
     details.className = 'workspace-disclosure'
     const summary = document.createElement('summary')
     const heading = panel.querySelector('h3')
     summary.textContent = heading?.textContent ?? 'Período e impressão'
     heading?.remove()
-    details.open = index <= 1
+    details.open = false
     panel.replaceWith(details)
     details.append(summary, panel)
   })
@@ -768,104 +769,6 @@ async function saveTaskGroups(): Promise<void> {
     toast(next.enabled?'Distribuição por grupo ativada':'Distribuição por grupo desativada')
     renderTaskConfig()
   }catch{editorError(scope);toast('Não foi possível salvar a distribuição')}finally{release()}
-}
-
-type PendingLevel = 'alta' | 'media' | 'baixa'
-
-const pendingLevelLabel: Record<PendingLevel, string> = { alta: 'Alta', media: 'Media', baixa: 'Baixa' }
-const pendingLevelColor: Record<PendingLevel, string> = { alta: '#B3261E', media: '#8A5B00', baixa: '#006EB6' }
-
-function renderPendencias(): void {
-  const content = document.getElementById('tarefasContent')
-  if (!content) return
-
-  const items: Array<{ level: PendingLevel; title: string; detail: string; tab: TarefasTab; target?: PendingTarget }> = []
-  const preparationMonth = nextCivilMonth(todayStr())
-  const nextPeriodId = periodKeyForDate(`${preparationMonth}-01`, planning.periodMode === 'month' ? 'month' : 'bimester')
-  if (planning.availabilityReviewedMonth !== preparationMonth) {
-    items.push({
-      level: 'media',
-      title: 'Revisar disponibilidades para ' + preparationMonth.slice(5, 7) + '/' + preparationMonth.slice(0, 4),
-      detail: 'Confira funções, folgas e datas indisponíveis; depois marque a revisão em Participantes.',
-      tab: 'participantes',
-    })
-  }
-  if (!periods[nextPeriodId]?.generatedAt) {
-    items.push({
-      level: 'alta',
-      title: 'Gerar a escala antes de 01/' + preparationMonth.slice(5, 7),
-      detail: 'Prepare o próximo período, mesmo que algumas funções fiquem vagas.',
-      tab: 'escala',
-      target: { periodId: nextPeriodId },
-    })
-  }
-  const futureEntries = scaleMeetingEntries()
-    .filter(entry => entry.meeting.date && entry.meeting.date >= todayStr() && canonicalMeetingType(entry.meeting.type) && !meetingIsBlocked(domainContext(), entry.meeting))
-  futureEntries.forEach(entry => {
-    const { meeting } = entry
-    GENERATED_ROLES.forEach(role => {
-      const personId = assignmentForRole(meeting, role)
-      if (!personId) return
-      const person = pessoas[personId]
-      if (!person) {
-        items.push({
-          level: 'alta',
-          title: `${roleLabel(role)} aponta para pessoa inexistente`,
-          detail: `${formatDate(meeting.date)} · ID ${personId}.`,
-          tab: 'escala',
-          target: { periodId:entry.periodId, meetingId:entry.meetingId, role },
-        })
-        return
-      }
-      if (!isActive(person)) {
-        items.push({
-          level: 'media',
-          title: `${roleLabel(role)} aponta para participante inativo`,
-          detail: `${formatDate(meeting.date)} · ${pessoaNome(person, personId)} está inativo em Tarefas.`,
-          tab: 'escala',
-          target: { periodId:entry.periodId, meetingId:entry.meetingId, role },
-        })
-      }
-      const conflict = manualConflictReason(domainContext(), entry, role, personId)
-      if (conflict) {
-        items.push({
-          level: 'media',
-          title: `${roleLabel(role)} com conflito`,
-          detail: `${formatDate(meeting.date)} · ${pessoaNome(person, personId)}: ${conflict}.`,
-          tab: 'escala',
-          target: { periodId: entry.periodId, meetingId: entry.meetingId, role },
-        })
-      }
-    })
-  })
-
-  Object.entries(pessoas).filter(([,person])=>isActive(person)&&!person.masterId).forEach(([personId,person])=>{
-    items.push({level:'baixa',title:personName(person,personId)+' sem vínculo com Admin',detail:context.usuario.apps.mestre?'Abra o participante e selecione a pessoa do cadastro central.':'Solicite ao Admin o vínculo desta pessoa. Você pode consultar o cadastro.',tab:'participantes',target:{personId}})
-  })
-  const counts = items.reduce<Record<PendingLevel, number>>((acc, item) => {
-    acc[item.level] += 1
-    return acc
-  }, { alta: 0, media: 0, baixa: 0 })
-
-  content.innerHTML = `
-    ${sectionTitle('Pendências', items.length ? 'Pendências de revisão e avisos cadastrais. Toque para abrir a correção; escalas publicadas precisam ser reabertas.' : 'A escala atual não tem pendências identificadas.')}
-    ${items.length ? `<div class="pending-summary"><span style="background:#B3261E">Alta: ${counts.alta}</span><span style="background:#8A5B00">Media: ${counts.media}</span><span style="background:#006EB6">Baixa: ${counts.baixa}</span></div>` : ''}
-    ${items.length
-      ? `<div style="display:flex;flex-direction:column;gap:8px">${items.map((item, index) => `<button class="module-menu-btn" type="button" data-pending-index="${index}" style="border-radius:8px;padding:12px 14px;border-left:4px solid ${pendingLevelColor[item.level]}"><div style="flex:1;min-width:0"><div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap"><span class="pending-badge" style="background:${pendingLevelColor[item.level]}">${pendingLevelLabel[item.level]}</span><div class="mod-label">${escapeHtml(item.title)}</div></div><div class="mod-desc">${escapeHtml(item.detail)}</div></div><span style="font-size:1.1rem;color:${pendingLevelColor[item.level]}">›</span></button>`).join('')}</div>`
-      : '<div style="padding:18px;border:1px solid #B7DEC7;background:#F1FAF4;border-radius:8px;color:#1A6B3C;font-size:.84rem">Tudo certo por enquanto.</div>'}`
-
-  content.querySelectorAll<HTMLButtonElement>('[data-pending-index]').forEach(button => {
-    button.addEventListener('click', () => {
-      const item = items[Number(button.dataset['pendingIndex'])]
-      if (!item) return
-      pendingTarget = item.target ?? null
-      if (item.target?.periodId) { selectedPeriodMonth = item.target.periodId.slice(0,7); selectedPeriodMode=planning.periodMode === 'month' ? 'month' : 'bimester' }
-      if(item.tab==='participantes'){participantSearch='';participantMeetingRule='';participantRoleFilter=''}
-      activeTab = item.tab
-      renderContent()
-      if(item.tab==='escala'&&!item.target)focusCorrection(document.getElementById('tarefasPeriodMonth'))
-    })
-  })
 }
 
 function sectionTitle(title: string, desc: string): string {

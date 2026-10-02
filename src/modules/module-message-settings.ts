@@ -49,14 +49,14 @@ export async function mountModuleMessageSettings(
   }
 
   current.meetingText=resolveMessageTemplate(module==='oradoresS1'?'oradores':module,current.meetingText)
-  if (!document.getElementById(containerId)) return
+  if (!container.isConnected || document.getElementById(containerId)!==container) return
   const prefix = `moduleMessage_${module}`
   container.innerHTML = `
-    <details class="form-panel" data-editor-scope>
+    <details class="form-panel" data-editor-scope data-ui-preference="message-settings">
       <summary><strong>Mensagem de ${esc(MODULE_LABELS[module])}</strong></summary>
       <p class="form-help" style="margin-top:12px">Este texto é usado nas mensagens preparadas pelo módulo e pode ser editado antes do envio.</p>
       <div class="form-group">
-        <label class="form-label" for="${prefix}_meeting">Mensagem de reunião ou programação</label>
+        <label class="form-label" for="${prefix}_meeting">${module==='tarefas'?'Mensagem das designações':'Mensagem das designações e intercâmbios'}</label>
         <textarea id="${prefix}_meeting" class="form-input" rows="5" maxlength="2000">${esc(current.meetingText?.trim() || defaults.meetingText)}</textarea>
       </div>
       <button id="${prefix}_save" class="btn btn-primary" type="button">Salvar mensagem</button>
@@ -75,7 +75,7 @@ export async function mountModuleMessageSettings(
     try {
       await set(child(agendaConfigRef, `moduleWhatsApp/${module}`), next)
       current=next
-      onSaved?.({ ...defaults, ...next })
+      if(container.isConnected)onSaved?.({ ...defaults, ...next })
       editorSaved(scope)
       notify('Mensagem do módulo salva')
     } catch {

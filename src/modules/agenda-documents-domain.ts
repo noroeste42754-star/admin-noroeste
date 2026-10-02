@@ -38,9 +38,9 @@ export function groupPublicDocuments(documents: AgendaPublicDocument[], month: s
   return { modules }
 }
 
-export function publicDocumentMonths(documents: AgendaPublicDocument[], now = Date.now()): string[] {
+export function publicDocumentMonths(documents: AgendaPublicDocument[], now = Date.now(), includeAdmin = false): string[] {
   const result = new Set<string>()
-  documents.filter(item => PUBLIC_PDF_MODULES.some(module => module === item.modulo) && !pdfHasExpired(item.criadoEm, now)).forEach(item => {
+  documents.filter(item => (PUBLIC_PDF_MODULES.some(module => module === item.modulo) || includeAdmin && item.modulo === 'admin') && !pdfHasExpired(item.criadoEm, now)).forEach(item => {
     const start = item.inicio?.slice(0, 7)
     const end = item.fim?.slice(0, 7)
     if (!validMonth(start ?? '') || !validMonth(end ?? '') || start! > end!) {
