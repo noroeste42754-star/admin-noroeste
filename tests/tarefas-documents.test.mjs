@@ -3,7 +3,7 @@ import assert from 'node:assert/strict'
 import { PDFDocument, StandardFonts } from 'pdf-lib/cjs/index.js'
 import { createTaskSchedulePdf, taskPrintHtml } from '../src/modules/tarefas-documents.ts'
 import { TASK_ROLES } from '../src/modules/tarefas-domain.ts'
-import { fitPdfFont } from '../src/ui/pdf-text-fit.ts'
+import { ellipsizePdfText, fitPdfFont } from '../src/ui/pdf-text-fit.ts'
 
 test('fonte se ajusta à largura antes de quebrar nomes compostos',async()=>{
   const pdf=await PDFDocument.create(),font=await pdf.embedFont(StandardFonts.Helvetica)
@@ -12,6 +12,9 @@ test('fonte se ajusta à largura antes de quebrar nomes compostos',async()=>{
   assert.ok(font.widthOfTextAtSize(name,result.effectiveFontSize)<=width)
   assert.ok(result.effectiveFontSize>=9)
   assert.equal(fitPdfFont(font,'Nome '.repeat(100),width,12),6,'conteúdo excepcional não vira letra ilegível')
+  const shortened=ellipsizePdfText(font,'Eliaudrey Santos de Oliveira',width,10)
+  assert.ok(shortened.endsWith('...'))
+  assert.ok(font.widthOfTextAtSize(shortened,10)<=width)
 })
 
 test('impressão identifica as duas seções e não apresenta reunião única como segunda seção', () => {
@@ -28,7 +31,7 @@ test('mes com cinco reunioes de cada tipo cabe em uma folha com nomes completos'
   const result = await createTaskSchedulePdf(meetings, 'Noroeste', people, 14)
   assert.equal(result.pages, 1)
   const longNames=await createTaskSchedulePdf(meetings, 'Noroeste', { p:{ name:'Nome muito extenso '.repeat(20) } }, 14)
-  assert.ok(longNames.pages>1)
+  assert.equal(longNames.pages,1,'nomes longos são abreviados visualmente, sem aumentar as linhas')
 })
 
 test('bimestre com 19 reunioes permanece em uma folha e nao modifica designacoes', async () => {

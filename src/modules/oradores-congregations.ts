@@ -6,6 +6,13 @@ export function localCongregationName(item:TalkSchedule, congregations:Record<st
   return local?.nome?.trim()||item.localCongregacaoNome?.trim()||`Congregação local · ${section==='s1'?'1ª':'2ª'} seção`
 }
 
+/** Both local speaker lists have the same congregation of origin. */
+export function localSpeakerOriginName(item:TalkSchedule, congregations:Record<string,SpeakerCongregation>):string {
+  const name = localCongregationName(item, congregations)
+  if (/noroeste|^congrega[çc][ãa]o local/i.test(name)) return 'Noroeste'
+  return name.replace(/\s*[·–-]\s*(?:1ª|2ª|primeira|segunda)\s+se[çc][ãa]o\s*$/i, '').trim() || 'Noroeste'
+}
+
 export function combinedCongregationTitle(congregations:Record<string,SpeakerCongregation>):string {
   const names=Object.values(congregations).filter(c=>c.tipo==='local'&&c.ativa!==false).sort((a,b)=>(a.secao??'s2').localeCompare(b.secao??'s2')).map(c=>c.nome.trim()).filter(Boolean)
   return [...new Set(names)].join(' / ')||'Congregação Noroeste · 1ª e 2ª seções'

@@ -1,5 +1,7 @@
 import assert from 'node:assert/strict'
+import { readFile } from 'node:fs/promises'
 import { chromium } from 'playwright'
+import ExcelJS from 'exceljs'
 import { sourceHash, publicationVersion, transitionPublication } from '../netlify/lib/publication-transition.ts'
 import { officialDocumentId } from '../src/modules/agenda-documents-domain.ts'
 import { periodIsPublished } from '../src/modules/publication-contract.ts'
@@ -67,6 +69,31 @@ try {
     },{month,root})
     assert.equal(await (await download).failure(),null)
     assert.equal(requests.length,beforeDownloadRequests,'baixar PDF não consulta nem altera a publicação')
+    for(const module of ['tarefas','oradores','escala']) {
+      const nextDownload=page.waitForEvent('download')
+      await page.evaluate(async({month,root,module})=>{
+        const {publicationInput}=await import('/src/modules/publication-contract.ts')
+        const input=publicationInput(root,module,month)
+        if(module==='tarefas'){
+          const {downloadTaskScheduleXlsx}=await import('/src/modules/tarefas-documents.ts')
+          await downloadTaskScheduleXlsx(input.meetings,input.congregation,input.people,month)
+        } else if(module==='oradores'){
+          const {downloadSpeakersScheduleXlsx}=await import('/src/modules/oradores-documents.ts')
+          await downloadSpeakersScheduleXlsx(input)
+        } else {
+          const {downloadScaleScheduleXlsx}=await import('/src/modules/escala-documents.ts')
+          await downloadScaleScheduleXlsx(input)
+        }
+      },{month,root,module})
+      const xlsx=await nextDownload
+      assert.equal(await xlsx.failure(),null)
+      assert.match(xlsx.suggestedFilename(),/\.xlsx$/)
+      const workbook=new ExcelJS.Workbook()
+      await workbook.xlsx.load(await readFile(await xlsx.path()))
+      assert.ok(workbook.worksheets.length>=1)
+      assert.equal(workbook.worksheets[0].getRow(4).getCell(1).fill?.fgColor?.argb,'FF5B3C88')
+    }
+    assert.equal(requests.length,beforeDownloadRequests,'baixar XLSX também não consulta nem altera a publicação')
     const oldTaskPath=root.agenda.documentos[officialDocumentId('tarefas',month)].storagePath
     lostCommitResponse=true
     const reconciled=await page.evaluate(async({month,root})=>{

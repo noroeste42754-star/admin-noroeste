@@ -2,37 +2,39 @@
 
 :root {
   /* Paleta principal */
-  --blue-deep:   #003F72;
-  --blue-mid:    #006EB6;
-  --blue-light:  #E3EFF7;
-  --gold:        #C8922A;
-  --gold-light:  #F5E6C8;
+  --blue-deep:   #5B3C88;
+  --blue-mid:    #2A6B77;
+  --blue-light:  #EEE8F5;
+  --gold:        #9B6D17;
+  --gold-light:  #FEF1BD;
+  --primary:     #5B3C88;
 
   /* Cores por módulo */
-  --color-mestre:      #003F72;
-  --color-tarefas:     #7E3AF2;
-  --color-escala:      #1A6B3C;
+  --color-mestre:      #5B3C88;
+  --color-tarefas:     #9B6D17;
+  --color-escala:      #2A6B77;
 
   /* Superfícies */
-  --bg:        #F4F6F9;
+  --bg:        #F7F7F5;
   --surface:   #FFFFFF;
-  --surface-2: #F0F4F8;   /* era --surface2 — unificado com o nome do plano */
+  --surface-2: #F1F1F1;
+  --modal-surface: #D8D8D8;
 
   /* Texto */
-  --ink:   #0D1B2A;
-  --ink-2: #4A5568;
-  --ink-3: #8899AA;
+  --ink:   #202026;
+  --ink-2: #626262;
+  --ink-3: #777777;
 
   /* Feedback */
-  --border:      #D1DCE8;
-  --danger:      #B3261E;
+  --border:      #D8D8D8;
+  --danger:      #942926;
   --danger-bg:   #FDECEA;
   --success:     #1A6B3C;
   --success-bg:  #E6F4ED;
-  --warning:     #C8922A;
+  --warning:     #9B6D17;
 
   /* Header accent */
-  --header-accent: linear-gradient(90deg, #C8922A 0%, #006EB6 100%);
+  --header-accent: linear-gradient(90deg, #5B3C88 0%, #2A6B77 100%);
 
   /* Layout */
   --header-h:  52px;
@@ -53,6 +55,7 @@
     --bg:        #0D1B2A;
     --surface:   #162333;
     --surface-2: #1E2F42;
+    --modal-surface: #24374D;
     --ink:       #EAF0F7;
     --ink-2:     #9BB2C8;
     --ink-3:     #5A7A96;
@@ -431,7 +434,9 @@ textarea.form-input {
 }
 
 .modal {
-  background: var(--surface);
+  background: var(--modal-surface);
+  border: 1px solid var(--border);
+  border-top: 5px solid var(--blue-deep);
   border-radius: var(--radius-lg);
   padding: 24px 22px;
   width: 100%;
@@ -440,6 +445,8 @@ textarea.form-input {
   max-height: 90dvh;
   overflow-y: auto;
 }
+
+.modal input:not([type="checkbox"]), .modal select, .modal textarea { background: var(--surface); }
 
 .modal h2 {
   font-size: 1.05rem;
@@ -643,7 +650,7 @@ body:has(.record-editor-dialog[open]) { overflow: hidden; }
   cursor: pointer;
   font: 600 .76rem var(--font);
 }
-.program-period-mode[aria-pressed="true"], .program-period-mode[aria-selected="true"] { background: #003F7218; color: var(--blue-deep); }
+.program-period-mode[aria-pressed="true"], .program-period-mode[aria-selected="true"] { background: #5B3C8818; color: var(--blue-deep); }
 .module-form-grid {
   display: grid;
   grid-template-columns: 1fr 1fr;
@@ -705,7 +712,7 @@ body:has(.record-editor-dialog[open]) { overflow: hidden; }
   gap: 8mm;
   align-items: baseline;
   margin-bottom: 3mm;
-  border-bottom: .6mm solid #7E3AF2;
+  border-bottom: .6mm solid #5B3C88;
   padding-bottom: 2mm;
 }
 
@@ -717,7 +724,7 @@ body:has(.record-editor-dialog[open]) { overflow: hidden; }
 .tarefas-print-title {
   font-size: 1.25em;
   font-weight: 800;
-  color: #7E3AF2;
+  color: #5B3C88;
   white-space: nowrap;
 }
 
@@ -743,19 +750,19 @@ body:has(.record-editor-dialog[open]) { overflow: hidden; }
 }
 
 .tarefas-print-table th {
-  background: #7E3AF2;
+  background: #5B3C88;
   color: #fff;
   font-weight: 800;
 }
 
 .tarefas-print-meetings { display:grid; grid-template-columns:1fr 1fr; gap:4mm; }
 .tarefas-print-meeting { border:.2mm solid #777; break-inside:avoid; page-break-inside:avoid; }
-.tarefas-print-meeting h2 { margin:0; padding:1.8mm 2.5mm; font-size:1em; color:#fff; background:#7E3AF2; }
-.tarefas-print-meeting .tarefas-print-table th { width:40%; color:#222; background:#ECE6F8; white-space:nowrap; }
-.tarefas-print-meeting .tarefas-print-table td { overflow-wrap:anywhere; }
+.tarefas-print-meeting h2 { margin:0; padding:1.8mm 2.5mm; font-size:1em; color:#fff; background:#5B3C88; }
+.tarefas-print-meeting .tarefas-print-table th { width:40%; color:#222; background:#EEE8F5; white-space:nowrap; }
+.tarefas-print-meeting .tarefas-print-table td { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 
 .tarefas-print-table tbody tr:nth-child(even) {
-  background: #F2F4F8;
+  background: #F7F7F5;
 }
 
 .tarefas-print-table td:first-child,
@@ -785,7 +792,7 @@ body:has(.record-editor-dialog[open]) { overflow: hidden; }
 .notice.warning {
   margin-bottom: 12px;
   padding: 9px 12px;
-  border: 1px solid #C8922A;
+  border: 1px solid #9B6D17;
   border-radius: 8px;
   background: #FDF3E3;
   color: var(--ink);

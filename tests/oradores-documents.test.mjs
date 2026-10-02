@@ -24,7 +24,7 @@ test('saídas incluem o mês selecionado e todos os meses seguintes', () => {
   assert.deepEqual(rows.local, [])
 })
 
-test('gera a programação de Oradores em A4 paisagem', async () => {
+test('gera a programação de Oradores em A4 retrato', async () => {
   const bytes = await createSpeakersSchedulePdf({
     month:'2026-09',
     speakers:{ o1:{ nome:'Orador local', tipo:'local', funcao:'anciao', telefone:'', ativo:true, temaIds:['t1'] } },
@@ -35,6 +35,6 @@ test('gera a programação de Oradores em A4 paisagem', async () => {
   const pdf = await PDFDocument.load(bytes)
   assert.equal(pdf.getPageCount(), 1)
   const { width, height } = pdf.getPage(0).getSize()
-  assert.ok(Math.abs(width - 841.89) < .1)
-  assert.ok(Math.abs(height - 595.28) < .1)
+  assert.ok(Math.abs(width - 595.28) < .1)
+  assert.ok(Math.abs(height - 841.89) < .1)
 })

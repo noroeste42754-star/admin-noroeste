@@ -25,6 +25,7 @@
   },
   "dependencies": {
     "@netlify/blobs": "^11.0.3",
+    "exceljs": "^4.4.0",
     "firebase-admin": "^14.4.0",
     "open-location-code": "^1.0.3",
     "pdf-lib": "^1.17.1"

@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { localCongregationName, combinedCongregationTitle, congregationInUse, preservesSpeakerCongregations } from '../src/modules/oradores-congregations.ts'
+import { localCongregationName, localSpeakerOriginName, combinedCongregationTitle, congregationInUse, preservesSpeakerCongregations } from '../src/modules/oradores-congregations.ts'
 import { auditedWrite } from '../netlify/lib/audited-write.ts'
 const congregacoes={one:{nome:'Noroeste · 1ª seção',tipo:'local',secao:'s1',ativa:true},two:{nome:'Noroeste · 2ª seção',tipo:'local',secao:'s2',ativa:true}}
 test('PDF identifica as duas congregações e nunca usa S2 como fallback de S1',()=>{
@@ -8,6 +8,8 @@ test('PDF identifica as duas congregações e nunca usa S2 como fallback de S1',
  assert.equal(localCongregationName({secao:'s2'},congregacoes),congregacoes.two.nome)
  assert.match(localCongregationName({secao:'s1'},{two:congregacoes.two}),/1ª/)
  assert.equal(combinedCongregationTitle(congregacoes),'Noroeste · 1ª seção / Noroeste · 2ª seção')
+ assert.equal(localSpeakerOriginName({secao:'s1',localCongregacaoId:'one'},congregacoes),'Noroeste')
+ assert.equal(localSpeakerOriginName({secao:'s2',localCongregacaoId:'two'},congregacoes),'Noroeste')
 })
 test('exclusão protege origem, destino, congregação local e visitantes vinculados',()=>{
  for(const field of ['localCongregacaoId','congregacaoOrigemId','congregacaoDestinoId'])assert.equal(congregationInUse('one',{p:{[field]:'one'}}),true)

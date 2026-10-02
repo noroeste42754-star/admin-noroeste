@@ -5,7 +5,7 @@ import { addCivilDays, fortalezaToday, fortalezaCurrentMonth } from './civil-dat
 import { availableDates } from './oradores-available'
 import { assignmentEntries, assignmentsMessage, exchangesMessage, availableMessage } from './oradores-messages'
 import { cleanAddress } from './agenda-location'
-import { congregationInUse } from './oradores-congregations'
+import { congregationInUse, localSpeakerOriginName } from './oradores-congregations'
 import { apiJson, ApiError } from '../secure-api'
 import { publishModulePeriod, renderPublicationStatus } from './module-publication'
 import type { AppContext } from '../types'
@@ -236,7 +236,7 @@ function scheduleEditor(): string {
 }
 
 function scheduleCard(id:string,item:TalkSchedule,showActions=true): string {
-  const speaker=speakers()[item.oradorId??'']?.nome?.trim() || item.oradorNome?.trim() || 'Sem orador', theme=themes()[item.temaId??''], congregation=congregations()[scheduleCongregationId(item)]?.nome ?? scheduleCongregationName(item)
+  const speaker=speakers()[item.oradorId??'']?.nome?.trim() || item.oradorNome?.trim() || 'Sem orador', theme=themes()[item.temaId??''], congregation=item.tipo==='discurso_local'?localSpeakerOriginName(item,congregations()):congregations()[scheduleCongregationId(item)]?.nome ?? scheduleCongregationName(item)
   const status=scheduleStatus(item), section=` · ${scheduleSection(item)==='s1'?'1ª seção':'2ª seção'}`
   const actions=showActions?`<div class="service-actions"><button class="btn btn-ghost" data-edit-schedule="${esc(id)}">${!item.oradorId&&!item.oradorNome?'Definir orador':!item.temaId&&!item.temaTitulo?'Definir tema':'Editar'}</button><button class="btn btn-ghost" data-confirm-schedule="${esc(id)}" ${!item.oradorId&&!item.oradorNome?'disabled':''}>${status==='confirmado'?'Desfazer confirmação':'Confirmar'}</button></div><details class="oradores-more-actions" data-ui-preference="schedule-actions:${esc(id)}"><summary>Mais ações</summary><div class="service-actions">${status==='confirmado' ? `<button class="btn btn-ghost" data-reconfirm-schedule="${esc(id)}">${item.reconfirmacao?.status?'Desfazer reconfirmação':'Reconfirmar'}</button>`:''}${id&&item.tipo!=='saida_orador'?`<button class="btn btn-ghost" data-substitute-date="${esc(item.data)}">Buscar substituto</button>`:''}</div></details>`:''
   return `<article class="oradores-card"><div class="oradores-card-head"><div><strong>${esc(formatSpeakerDate(item.data))}</strong><small>${esc(TALK_KIND_LABEL[item.tipo]+section)}</small></div><span class="status-pill status-${esc(status)}">${esc(TALK_STATUS_LABEL[status])}</span></div><div class="oradores-card-grid"><div><span>Orador</span><strong>${esc(speaker)}</strong></div><div><span>Tema</span><strong>${esc(theme?`${String(theme.numero).padStart(3,'0')} - ${theme.titulo}`:item.temaTitulo||'Sem tema')}</strong></div>${congregation?`<div><span>Congregação</span><strong>${esc(congregation)}</strong></div>`:''}${item.oradorSecundarioNome?`<div><span>Segundo orador</span><strong>${esc(item.oradorSecundarioNome)}</strong></div>`:''}</div>${actions}</article>`
@@ -247,7 +247,7 @@ function renderSchedule(): void {
   const hasCombinedPdfRows=Object.values(schedule()).some(item=>sameMonth(item.data,selectedMonth)||(item.tipo==='saida_orador'&&item.data>=`${selectedMonth}-01`))
   const matchesFilter=(item:TalkSchedule,filter:string):boolean=>filter==='speaker'?!item.oradorId&&!item.oradorNome:filter==='theme'?!item.temaId&&!item.temaTitulo:filter==='confirm'?scheduleStatus(item)==='por_confirmar':filter==='reconfirm'?scheduleStatus(item)==='confirmado'&&!item.reconfirmacao?.status&&item.data>=today()&&item.data<=addCivilDays(today(),7):true
   const rows=monthRows.filter(([,item])=>(!onlyFuture||item.data>=today())&&matchesFilter(item,scheduleFilter)&&[`${speakers()[item.oradorId??'']?.nome??item.oradorNome??''}`,themes()[item.temaId??'']?.titulo??item.temaTitulo??'',String(themes()[item.temaId??'']?.numero??item.temaNumero??'')].some(value=>value.toLocaleLowerCase('pt-BR').includes(scheduleQuery.toLocaleLowerCase('pt-BR')))).sort((a,b)=>a[1].data.localeCompare(b[1].data)||a[1].tipo.localeCompare(b[1].tipo))
-  root().innerHTML=`${sectionTitle('Programação de oradores')}${periodControl()}<div class="service-actions"><button id="newSchedule" class="btn btn-primary" type="button">Nova programação</button><button id="speakerSchedulePdf" class="btn btn-ghost" type="button" ${hasCombinedPdfRows?'':'disabled'}>Baixar PDF</button><button id="speakerSchedulePublish" class="btn btn-ghost" type="button" ${hasCombinedPdfRows?'':'disabled'}>Publicar no Quadro</button></div><details class="workspace-disclosure" data-ui-preference="schedule-options"><summary>Mais opções da programação</summary><div class="service-actions"><button id="fillScheduleDates" class="btn btn-ghost" type="button">Criar datas do mês</button><button id="findSpeakerSubstitute" class="btn btn-ghost" type="button">Buscar substituto</button></div></details><p id="speakerPublicationStatus" class="notice" aria-live="polite">Consultando publicação…</p>${monthRows.length ? '<p class="form-help">Confirmar registra a resposta do orador. Publicar no Quadro atualiza o PDF; editar a programação não atualiza o arquivo já publicado.</p>' : ''}${scheduleEditor()}${monthRows.length ? `<div class="service-actions">${[['','Todos'],['speaker','Sem orador'],['theme','Sem tema'],['confirm','A confirmar'],['reconfirm','Reconfirmar']].map(([key,label])=>`<button class="btn ${scheduleFilter===key?'btn-primary':'btn-ghost'}" data-schedule-filter="${key}" aria-pressed="${scheduleFilter===key}">${label}: ${monthRows.filter(([,item])=>matchesFilter(item,key!)).length}</button>`).join('')}</div>
+  root().innerHTML=`${sectionTitle('Programação de oradores')}${periodControl()}<div class="service-actions"><button id="newSchedule" class="btn btn-primary" type="button">Nova programação</button><button id="speakerSchedulePdf" class="btn btn-ghost" type="button" ${hasCombinedPdfRows?'':'disabled'}>Baixar PDF</button><button id="speakerScheduleXlsx" class="btn btn-ghost" type="button" ${hasCombinedPdfRows?'':'disabled'}>Baixar XLSX</button><button id="speakerSchedulePublish" class="btn btn-ghost" type="button" ${hasCombinedPdfRows?'':'disabled'}>Publicar no Quadro</button></div><details class="workspace-disclosure" data-ui-preference="schedule-options"><summary>Mais opções da programação</summary><div class="service-actions"><button id="fillScheduleDates" class="btn btn-ghost" type="button">Criar datas do mês</button><button id="findSpeakerSubstitute" class="btn btn-ghost" type="button">Buscar substituto</button></div></details><p id="speakerPublicationStatus" class="notice" aria-live="polite">Consultando publicação…</p>${monthRows.length ? '<p class="form-help">Confirmar registra a resposta do orador. Publicar no Quadro atualiza o PDF; editar a programação não atualiza o arquivo já publicado.</p>' : ''}${scheduleEditor()}${monthRows.length ? `<div class="service-actions">${[['','Todos'],['speaker','Sem orador'],['theme','Sem tema'],['confirm','A confirmar'],['reconfirm','Reconfirmar']].map(([key,label])=>`<button class="btn ${scheduleFilter===key?'btn-primary':'btn-ghost'}" data-schedule-filter="${key}" aria-pressed="${scheduleFilter===key}">${label}: ${monthRows.filter(([,item])=>matchesFilter(item,key!)).length}</button>`).join('')}</div>
     ${field('Buscar na programação',`<input id="scheduleSearch" type="search" value="${esc(scheduleQuery)}" placeholder="Orador, número ou título do tema">`)}
     <label class="oradores-check"><input id="scheduleOnlyFuture" type="checkbox" ${onlyFuture?'checked':''}> Só o que falta (datas de hoje em diante)</label>` : ''}<div class="oradores-list">${rows.map(([id,item])=>scheduleCard(id,item)).join('')||empty(monthRows.length?'Nenhum resultado para esta busca ou filtro.':'Nenhuma programação neste mês. Use “Nova programação” ou “Criar datas do mês” para começar.')}</div>${monthRows.length && (scheduleQuery||scheduleFilter||onlyFuture)?'<button id="clearScheduleFilters" class="btn btn-ghost">Limpar filtros</button>':''}`
   mountRecordEditor(root(), 'speakerScheduleForm')
@@ -264,6 +264,7 @@ function renderSchedule(): void {
   document.getElementById('findSpeakerSubstitute')?.addEventListener('click',()=>void openScreen('emergencia'))
   document.getElementById('fillScheduleDates')?.addEventListener('click',()=>void createMonthSlots())
   document.getElementById('speakerSchedulePdf')?.addEventListener('click',()=>void downloadSchedulePdf())
+  document.getElementById('speakerScheduleXlsx')?.addEventListener('click',()=>void downloadScheduleXlsx())
   document.getElementById('speakerSchedulePublish')?.addEventListener('click',()=>void publishSchedulePdf())
   document.getElementById('cancelScheduleEdit')?.addEventListener('click',()=>{ editingId=''; scheduleDraft=null; renderSchedule() })
   document.getElementById('speakerScheduleForm')?.addEventListener('change',event=>{ if (['tipo','secao'].includes((event.target as HTMLElement).getAttribute('name')??'')) void saveDraftAndRerender(event.currentTarget as HTMLFormElement) })
@@ -368,6 +369,17 @@ async function downloadSchedulePdf(): Promise<void> {
   if (downloadingPdf) return; downloadingPdf=true
   const button=document.getElementById('speakerSchedulePdf') as HTMLButtonElement|null; if(button){button.disabled=true;button.textContent='Preparando PDF...'}
   try { const docs=await import('./oradores-documents'); await docs.downloadSpeakersSchedulePdf({month:selectedMonth,schedule:Object.values(schedule()),speakers:speakers(),themes:themes(),congregations:congregations()}); toast('Download do PDF iniciado') } catch { toast('Não foi possível gerar o PDF') } finally { downloadingPdf=false; if(button){button.disabled=false;button.textContent='Baixar PDF'} }
+}
+
+async function downloadScheduleXlsx(): Promise<void> {
+  const button=document.getElementById('speakerScheduleXlsx') as HTMLButtonElement|null
+  if(button){button.disabled=true;button.textContent='Preparando XLSX...'}
+  try {
+    const docs=await import('./oradores-documents')
+    await docs.downloadSpeakersScheduleXlsx({month:selectedMonth,schedule:Object.values(schedule()),speakers:speakers(),themes:themes(),congregations:congregations()})
+    toast('Download do XLSX iniciado')
+  } catch { toast('Não foi possível gerar o XLSX') }
+  finally { if(button){button.disabled=false;button.textContent='Baixar XLSX'} }
 }
 
 async function publishSchedulePdf(): Promise<void> {

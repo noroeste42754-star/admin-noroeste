@@ -117,7 +117,7 @@ try{
  assert.equal(await page.locator('[data-schedule-filter=""]').getAttribute('aria-pressed'),'true')
  assert.deepEqual(data,beforePreferences)
  console.log('Preferências: painéis, filtros e prazo persistem após reload; seções isoladas e banco inalterado OK')
- await go('tarefas');await tab('escala');await click('#btnTarefasPdf');await click('#btnToggleTaskLock');await page.waitForFunction(()=>document.querySelector('#btnToggleTaskLock')?.textContent.includes('Reabrir'));assert.equal(data.tarefas.scale.periods[month].locked,true)
+ await go('tarefas');await tab('escala');assert.equal(await page.locator('#tarefasPeriodMode').count(),0);assert.equal(await page.locator('label[for="tarefasPeriodMonth"]').textContent(),'Mês(es)');await click('#btnTarefasPdf');await click('#btnToggleTaskLock');await page.waitForFunction(()=>document.querySelector('#btnToggleTaskLock')?.textContent.includes('Reabrir'));assert.equal(data.tarefas.scale.periods[month].locked,true)
  assert.deepEqual(await page.locator('.workspace-tabs button').allTextContents(),['Escala','Pessoas','Mais opções'])
  await click('#btnToggleTaskLock');await page.waitForFunction(()=>document.querySelector('#btnToggleTaskLock')?.textContent.includes('Publicar'));assert.equal(data.tarefas.scale.periods[month].locked,false)
  await click('#btnClearTaskRole');await page.locator('#tarefasGenerateRole').selectOption('presidente');await click('#btnClearTaskRole');await page.locator('#toast').filter({hasText:/limpa|removida/i}).waitFor();await click('#btnGenerateTaskRole');await page.locator('#btnGenerateScale').waitFor()

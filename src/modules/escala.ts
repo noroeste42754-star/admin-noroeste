@@ -162,7 +162,7 @@ function renderNavigation(): void {
 function renderIndex(): void {
   root().innerHTML = '<div style="margin-bottom:14px"><h2 style="font-size:1.05rem;color:#1A6B3C">Escala TPL</h2></div><div id="escalaMenu"></div>'
   const items: ItemMenu[] = [
-    { id: 'escalaAtual', titulo: 'Escala do mês', subtitulo: 'Gerar, revisar, editar e publicar', icone: '▣', corFundo: '#003F72' },
+    { id: 'escalaAtual', titulo: 'Escala do mês', subtitulo: 'Gerar, revisar, editar e publicar', icone: '▣', corFundo: '#5B3C88' },
     { id: 'participantes', titulo: 'Pessoas', subtitulo: 'Cadastro, disponibilidade e mensagens', icone: '♙', corFundo: '#1A6B3C' },
     { id: 'config', titulo: 'Mais opções', subtitulo: 'Locais, regras, impressão e conferência', icone: '⚙', corFundo: '#5C6062' },
   ]
@@ -415,11 +415,12 @@ function renderScale(): void {
   const dayHtml=(date:string)=>'<section class="scale-day" data-scale-date="'+date+'"><h3>'+esc(dayLabel(date))+'</h3>'+slots.map(time=>slotHtml(date,time,table)).join('')+'</section>'
   const weeksHtml=[...weeks].map(([start,days])=>'<details class="scale-week" '+(start===initialWeek?'open':'')+'><summary>'+esc(dayLabel(days[0]))+' — '+esc(dayLabel(days[days.length-1]))+' · '+days.length+' dia(s)</summary>'+days.map(dayHtml).join('')+'</details>').join('')
   const activeRules = Object.values(normalizeEscalaGenerationRules(settings.engineRules)).filter(Boolean).length
-  root().innerHTML = `${periodControls()}<span class="admin-badge">${published ? 'Publicado' : 'Rascunho'}</span>${published ? '<div class="notice warning">Este mês está publicado e bloqueado para edição.</div>' : ''}<div class="scale-actions"><button id="sGenerateAll" class="btn ${hasData(selectedMonth) ? 'btn-ghost' : 'btn-primary'}" ${published ? 'disabled' : ''}>${hasData(selectedMonth) ? 'Completar mês' : 'Gerar mês'} · ${activeRules} regras</button><button id="sPdf" class="btn btn-ghost" ${hasData(selectedMonth) ? '' : 'disabled'}>Baixar PDF</button>${!published ? `<button id="sPublish" class="btn btn-primary" ${hasData(selectedMonth) ? '' : 'disabled'}>Publicar no Quadro</button>` : ''}${published ? '<button id="sUnpublish" class="btn btn-ghost">Reabrir para edição</button>' : `${hasData(selectedMonth) ? '<details><summary>Mais opções</summary><button id="sDelete" class="btn btn-danger">Apagar mês</button></details>' : ''}`}</div><button type="button" id="scaleToday" class="btn btn-ghost">Ir para hoje ou próximo dia</button><div class="scale-days">${weeksHtml || '<p class="empty-state">Este local não tem dias ativos neste mês.</p>'}</div>`
+  root().innerHTML = `${periodControls()}<span class="admin-badge">${published ? 'Publicado' : 'Rascunho'}</span>${published ? '<div class="notice warning">Este mês está publicado e bloqueado para edição.</div>' : ''}<div class="scale-actions"><button id="sGenerateAll" class="btn ${hasData(selectedMonth) ? 'btn-ghost' : 'btn-primary'}" ${published ? 'disabled' : ''}>${hasData(selectedMonth) ? 'Completar mês' : 'Gerar mês'} · ${activeRules} regras</button><button id="sPdf" class="btn btn-ghost" ${hasData(selectedMonth) ? '' : 'disabled'}>Baixar PDF</button><button id="sXlsx" class="btn btn-ghost" ${hasData(selectedMonth) ? '' : 'disabled'}>Baixar XLSX</button>${!published ? `<button id="sPublish" class="btn btn-primary" ${hasData(selectedMonth) ? '' : 'disabled'}>Publicar no Quadro</button>` : ''}${published ? '<button id="sUnpublish" class="btn btn-ghost">Reabrir para edição</button>' : `${hasData(selectedMonth) ? '<details><summary>Mais opções</summary><button id="sDelete" class="btn btn-danger">Apagar mês</button></details>' : ''}`}</div><button type="button" id="scaleToday" class="btn btn-ghost">Ir para hoje ou próximo dia</button><div class="scale-days">${weeksHtml || '<p class="empty-state">Este local não tem dias ativos neste mês.</p>'}</div>`
   bindPeriod(renderScale)
   document.getElementById('scaleToday')?.addEventListener('click',()=>{const target=[...root().querySelectorAll<HTMLElement>('[data-scale-date]')].find(day=>day.dataset.scaleDate!>=fortalezaToday());if(target)focusCorrection(target);else toast('Não há dias futuros neste período.')})
   document.getElementById('sGenerateAll')!.addEventListener('click', () => void generate())
   document.getElementById('sPdf')!.addEventListener('click', () => void printPdf())
+  document.getElementById('sXlsx')!.addEventListener('click', () => void printXlsx())
   document.getElementById('sPublish')?.addEventListener('click', () => void publish())
   document.getElementById('sUnpublish')?.addEventListener('click', () => void unpublish())
   document.getElementById('sDelete')?.addEventListener('click', () => void deleteMonth())
@@ -588,7 +589,7 @@ function renderPending(): void {
   }
   const counts = { high:pending.filter(item => item.level === 'high').length, medium:pending.filter(item => item.level === 'medium').length, low:pending.filter(item => item.level === 'low').length }
   const labels: Record<string, string> = { high:'Revisar escala', medium:'Atenção', low:'Aviso' }
-  const colors: Record<string, string> = { high:'#B3261E', medium:'#8A5B00', low:'#006EB6' }
+  const colors: Record<string, string> = { high:'#942926', medium:'#9B6D17', low:'#2A6B77' }
   root().innerHTML = `${periodControls(false)}${pending.length ? `<div class="pending-summary"><span style="background:${colors.high}">Urgentes: ${counts.high}</span><span style="background:${colors.medium}">Atenção: ${counts.medium}</span><span style="background:${colors.low}">Quando puder: ${counts.low}</span></div>` : ''}<div class="module-option-list">${pending.map(item => `<button class="module-menu-btn" data-pending="${item.target}" style="border-left:4px solid ${colors[item.level]}"><div class="mod-icon" style="background:${colors[item.level]}20;color:${colors[item.level]}">!</div><div><div class="mod-label">${esc(item.title)} · ${labels[item.level]}</div><div class="mod-desc">${esc(item.detail)}</div></div></button>`).join('') || '<p class="empty-state">Nenhuma pendência identificada.</p>'}</div>`
   bindPeriod(renderPending); document.querySelectorAll<HTMLButtonElement>('[data-pending]').forEach((button, index) => button.addEventListener('click', () => {
     const item = pending[index]; if (!item) return
@@ -686,4 +687,17 @@ async function printPdf(): Promise<void> {
     toast('Download do PDF iniciado')
   } catch { toast('Não foi possível gerar o PDF') }
   finally { downloadingPdf = false; if (button) { button.disabled = false; button.textContent = 'Baixar PDF' } }
+}
+
+async function printXlsx(): Promise<void> {
+  if (!hasData(selectedMonth)) return
+  const input=structuredClone(scalePdfInput())
+  const button=document.getElementById('sXlsx') as HTMLButtonElement|null
+  if(button){button.disabled=true;button.textContent='Preparando XLSX...'}
+  try {
+    const {downloadScaleScheduleXlsx}=await import('./escala-documents')
+    await downloadScaleScheduleXlsx(input)
+    toast('Download do XLSX iniciado')
+  } catch { toast('Não foi possível gerar o XLSX') }
+  finally { if(button){button.disabled=false;button.textContent='Baixar XLSX'} }
 }

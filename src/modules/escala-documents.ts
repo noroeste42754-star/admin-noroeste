@@ -2,8 +2,8 @@ import { localSlots, participantName, type EscalaLocal, type EscalaParticipant, 
 import { dayLabel, hasScaleAssignments, monthLabel, printRowsForLocal } from './escala-output.ts'
 import { PDFDocument, StandardFonts, rgb, type PDFFont, type PDFPage } from 'pdf-lib/cjs/index.js'
 import { downloadPdf } from '../ui/pdf-download.ts'
-import { fitPdfFont } from '../ui/pdf-text-fit.ts'
-import { A4_LANDSCAPE, PDF_INK, PDF_LINE, drawPublicPdfHeader } from '../ui/public-pdf-layout.ts'
+import { ellipsizePdfText } from '../ui/pdf-text-fit.ts'
+import { A4_LANDSCAPE, PDF_ACCENT, PDF_LINE, drawPublicPdfHeader } from '../ui/public-pdf-layout.ts'
 
 const esc = (value: unknown) => String(value ?? '').replace(/[&<>'"]/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' })[char]!)
 
@@ -51,22 +51,8 @@ function fit(font: PDFFont, value: string, size: number, width: number): string 
   return `${result.trim()}...`
 }
 
-function nameLines(font: PDFFont, name: string, size: number, width: number): string[] {
-  const lines: string[] = []
-  let line = ''
-  for (const word of name.trim().split(/\s+/)) {
-    if (line && font.widthOfTextAtSize(`${line} ${word}`, size) > width) { lines.push(line); line = '' }
-    for (const char of (line ? ` ${word}` : word)) {
-      if (line && font.widthOfTextAtSize(line + char, size) > width) { lines.push(line); line = '' }
-      line += char
-    }
-  }
-  if (line) lines.push(line)
-  return lines
-}
-
 function cellLines(names: string[], font: PDFFont, fontSize: number, slotCount: number): string[] {
-  return names.slice(0, 2).flatMap(name => nameLines(font, name, fontSize, 720 / Math.max(1, slotCount) - 8))
+  return names.slice(0, 2).map(name => ellipsizePdfText(font, name, 720 / Math.max(1, slotCount) - 8, fontSize))
 }
 
 function rowHeight(row: ReturnType<typeof printRowsForLocal>[number], font: PDFFont, fontSize: number, slotCount: number): number {
@@ -79,7 +65,7 @@ function drawScaleHeader(page: PDFPage, regular: PDFFont, bold: PDFFont, local: 
 
 function drawScaleTable(page: PDFPage, regular: PDFFont, bold: PDFFont, slots: string[], rows: ReturnType<typeof printRowsForLocal>, y: number, fontSize: number): void {
   const x = 30, width = 782, dayWidth = 62, slotWidth = (width - dayWidth) / Math.max(1, slots.length), headerHeight = 22
-  page.drawRectangle({ x, y:y - headerHeight, width, height:headerHeight, color:PDF_INK, borderColor:PDF_LINE, borderWidth:.5 })
+  page.drawRectangle({ x, y:y - headerHeight, width, height:headerHeight, color:PDF_ACCENT, borderColor:PDF_LINE, borderWidth:.5 })
   page.drawText('Dia', { x:x + 5, y:y - 15, size:fontSize, font:bold, color:rgb(1, 1, 1) })
   slots.forEach((time, index) => {
     const cellX = x + dayWidth + index * slotWidth
@@ -124,10 +110,7 @@ export async function createScaleSchedulePdf(input: ScalePrintInput): Promise<Sc
     const rows = allRows.map(row => ({ ...row, cells:columns.map(index => row.cells[index]) }))
     const page = pdf.addPage(A4_LANDSCAPE)
     const y = drawScaleHeader(page, regular, bold, String(local.name ?? localId), input.month)
-    let fontSize = Math.min(11, Math.max(7, requested))
-    for (const row of rows) for (const names of row.cells) for (const name of names) {
-      fontSize = fitPdfFont(regular, name, 720 / Math.max(1, slots.length) - 8, fontSize)
-    }
+    let fontSize = Math.min(11, Math.max(8, requested))
     const height = () => rows.reduce((sum, row) => sum + rowHeight(row, regular, fontSize, slots.length), 22)
     while (height() > y - 30 && fontSize > 6) fontSize = Math.max(6, fontSize - .25)
     if (height() > y - 30) throw new Error(`A escala ${local.name ?? localId} não cabe em uma folha A4 com nomes legíveis. Reduza os horários ou o período.`)
@@ -141,4 +124,24 @@ export async function downloadScaleSchedulePdf(input: ScalePrintInput): Promise<
   const result = await createScaleSchedulePdf(input)
   downloadPdf(result.bytes, `escala-tpl-${input.month}.pdf`)
   return result
+}
+
+export async function downloadScaleScheduleXlsx(input: ScalePrintInput): Promise<void> {
+  const { downloadStyledXlsx } = await import('../ui/xlsx-download.ts')
+  const allowed=input.localIds?new Set(input.localIds):null
+  const selected=Object.entries(input.locals).filter(([id])=>(!allowed||allowed.has(id))&&hasScaleAssignments(input.tables[id]?.[input.month]))
+    .sort((a,b)=>Number(a[1].sortOrder??0)-Number(b[1].sortOrder??0))
+  if(!selected.length) throw new Error('Nenhuma designação na Escala TPL para este mês.')
+  await downloadStyledXlsx(selected.map(([localId,local],index)=>{
+    const allSlots=input.tables[localId]?.[input.month]?.slots??localSlots(local)
+    const allRows=printRowsForLocal(localId,input.month,local,input.tables,input.participants,input.exclusions)
+    const occupied=allSlots.map((_,i)=>i).filter(i=>allRows.some(row=>row.cells[i]?.length))
+    const columns=occupied.length?occupied:allSlots.map((_,i)=>i)
+    return {
+      name:`${index+1}-${local.name??localId}`.slice(0,31).replace(/[\\/*?\[\]:]/g,'-'),
+      title:`Escala TPL · ${local.name??localId}`,subtitle:monthLabel(input.month),
+      headers:['Dia',...columns.map(i=>allSlots[i])],widths:[18,...columns.map(()=>38)],dateColumns:[1],orientation:'landscape' as const,
+      rows:allRows.map(row=>[new Date(`${row.date}T12:00:00Z`),...columns.map(i=>row.cells[i]?.join(' / ')??'')]),
+    }
+  }),`escala-tpl-${input.month}.xlsx`)
 }

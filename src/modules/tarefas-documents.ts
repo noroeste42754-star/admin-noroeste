@@ -1,9 +1,9 @@
 import { TASK_ROLES, TASK_ROLE_LABELS, assignmentForRole, personName, roleApplies, type TaskMeeting, type TaskPerson } from './tarefas-domain.ts'
 import { formatTaskDate, paginateItems, rowsPerPrintPage } from './tarefas-output.ts'
-import { PDFDocument, StandardFonts, rgb, type PDFFont } from 'pdf-lib/cjs/index.js'
+import { PDFDocument, StandardFonts, rgb } from 'pdf-lib/cjs/index.js'
 import { downloadPdf } from '../ui/pdf-download.ts'
-import { fitPdfFont } from '../ui/pdf-text-fit.ts'
-import { A4_PORTRAIT, PDF_INK, PDF_LINE, drawPublicPdfHeader } from '../ui/public-pdf-layout.ts'
+import { ellipsizePdfText } from '../ui/pdf-text-fit.ts'
+import { A4_PORTRAIT, PDF_ACCENT, PDF_INK, PDF_LINE, drawPublicPdfHeader } from '../ui/public-pdf-layout.ts'
 
 const MIN_PT = 8, MAX_PT = 22
 const A4_WIDTH = ((210 - 16) / 25.4) * 96
@@ -57,20 +57,6 @@ export interface TaskPdfResult { bytes: Uint8Array; pages: number; effectiveFont
 
 const PDF_MARGIN = 34
 
-function wrapTaskPdfText(font: PDFFont, value: string, size: number, width: number): string[] {
-  const lines: string[] = []
-  let line = ''
-  for (const word of value.split(/\s+/)) {
-    if (line && font.widthOfTextAtSize(`${line} ${word}`, size) > width) { lines.push(line); line = '' }
-    for (const character of (line ? ' ' : '') + word) {
-      if (line && font.widthOfTextAtSize(line + character, size) > width) { lines.push(line); line = '' }
-      line += character
-    }
-  }
-  if (line) lines.push(line)
-  return lines.length ? lines : ['']
-}
-
 export async function createTaskSchedulePdf(meetings: TaskMeeting[], congregation: string, people: Record<string, TaskPerson>, preferredFontPt: number): Promise<TaskPdfResult> {
   const pdf = await PDFDocument.create()
   const regular = await pdf.embedFont(StandardFonts.Helvetica)
@@ -89,19 +75,16 @@ export async function createTaskSchedulePdf(meetings: TaskMeeting[], congregatio
   const prepare = (size: number) => blocks.map(block => ({
     ...block,
     rows:ordered.map(meeting => {
-      const cells = [wrapTaskPdfText(bold, dateAndSection(meeting), size, dateWidth - 8),
-        ...block.roles.map(role => wrapTaskPdfText(regular, roleApplies(role, meeting) ? assignmentName(assignmentForRole(meeting, role), people) || 'A definir' : '-', size, cellWidth - 8))]
-      return { cells, height:Math.max(...cells.map(cell => cell.length)) * (size + 1) + 3 }
+      const cells = [ellipsizePdfText(bold, dateAndSection(meeting), dateWidth - 8, size),
+        ...block.roles.map(role => ellipsizePdfText(regular, roleApplies(role, meeting) ? assignmentName(assignmentForRole(meeting, role), people) || 'A definir' : '-', cellWidth - 8, size))]
+      return { cells, height:size + 6 }
     }),
   }))
-  let effectiveFontSize = Math.min(12, Math.max(7, Number(preferredFontPt) || 10))
-  for (const meeting of ordered) for (const role of TASK_ROLES) {
-    if (roleApplies(role, meeting)) effectiveFontSize = fitPdfFont(regular, assignmentName(assignmentForRole(meeting, role), people), cellWidth - 8, effectiveFontSize)
-  }
+  let effectiveFontSize = Math.min(10, Math.max(8, Number(preferredFontPt) || 10))
   let prepared = prepare(effectiveFontSize)
   const height = () => prepared.reduce((sum, block) => sum + 37 + block.rows.reduce((total, row) => total + row.height, 0), 0)
-  while (height() > y - PDF_MARGIN && effectiveFontSize > 6) {
-    effectiveFontSize = Math.max(6, effectiveFontSize - .25)
+  while (height() > y - PDF_MARGIN && effectiveFontSize > 8) {
+    effectiveFontSize = Math.max(8, effectiveFontSize - .25)
     prepared = prepare(effectiveFontSize)
   }
   if (height() > y - PDF_MARGIN) {
@@ -121,7 +104,7 @@ export async function createTaskSchedulePdf(meetings: TaskMeeting[], congregatio
   for (const block of ordered.length ? prepared : []) {
     page.drawText(block.title, { x:PDF_MARGIN, y:y - 9, size:9, font:bold, color:PDF_INK })
     y -= 15
-    page.drawRectangle({ x:PDF_MARGIN, y:y - 18, width, height:18, color:PDF_INK })
+    page.drawRectangle({ x:PDF_MARGIN, y:y - 18, width, height:18, color:PDF_ACCENT })
     ;['Data/Seção', ...block.roles.map(role => TASK_ROLE_LABELS[role])].forEach((label, index) => {
       const x = PDF_MARGIN + (index ? dateWidth + (index - 1) * cellWidth : 0)
       page.drawText(label, { x:x + 4, y:y - 12, size:8, font:bold, color:rgb(1, 1, 1) })
@@ -131,7 +114,7 @@ export async function createTaskSchedulePdf(meetings: TaskMeeting[], congregatio
       if (rowIndex % 2 === 0) page.drawRectangle({ x:PDF_MARGIN, y:y - row.height, width, height:row.height, color:rgb(.96, .97, .98) })
       row.cells.forEach((cell, column) => {
         const x = PDF_MARGIN + (column ? dateWidth + (column - 1) * cellWidth : 0)
-        cell.forEach((text, index) => page.drawText(text, { x:x + 4, y:y - 1.5 - effectiveFontSize - index * (effectiveFontSize + 1), size:effectiveFontSize, font:column ? regular : bold, color:PDF_INK }))
+        page.drawText(cell, { x:x + 4, y:y - 1.5 - effectiveFontSize, size:effectiveFontSize, font:column ? regular : bold, color:PDF_INK })
         page.drawLine({ start:{ x, y }, end:{ x, y:y - row.height }, thickness:.3, color:PDF_LINE })
       })
       page.drawLine({ start:{ x:PDF_MARGIN + width, y }, end:{ x:PDF_MARGIN + width, y:y - row.height }, thickness:.3, color:PDF_LINE })
@@ -147,4 +130,22 @@ export async function downloadTaskSchedulePdf(meetings: TaskMeeting[], congregat
   const result = await createTaskSchedulePdf(meetings, congregation, people, preferredFontPt)
   downloadPdf(result.bytes, `tarefas-${periodId}.pdf`)
   return result
+}
+
+export async function downloadTaskScheduleXlsx(meetings: TaskMeeting[], congregation: string, people: Record<string, TaskPerson>, month: string): Promise<void> {
+  const { downloadStyledXlsx } = await import('../ui/xlsx-download.ts')
+  const ordered = [...meetings].sort((a,b)=>String(a.date??'').localeCompare(String(b.date??'')) || Number(b.type==='weekend_s1')-Number(a.type==='weekend_s1'))
+  const groups = [
+    { name:'Áudio e vídeo', roles:['operador1','operador2','mic1','mic2'] as const },
+    { name:'Reunião', roles:['presidente','leitor','entrada','auditorio'] as const },
+  ]
+  await downloadStyledXlsx(groups.map(group=>({
+    name:group.name,title:`Escala de Tarefas · ${group.name}`,subtitle:`${congregation} · ${month}`,
+    headers:['Data','Seção',...group.roles.map(role=>TASK_ROLE_LABELS[role])],widths:[15,21,28,28,28,28],dateColumns:[1],
+    rows:ordered.map(meeting=>[
+      new Date(`${meeting.date}T12:00:00Z`),
+      meeting.type==='midweek'?'Meio de semana':meeting.type==='weekend_s1'?'1ª seção':meeting.type==='weekend_merged'?'Reunião única':'2ª seção',
+      ...group.roles.map(role=>roleApplies(role,meeting)?assignmentName(assignmentForRole(meeting,role),people)||'A definir':'-'),
+    ]),
+  })),`tarefas-${month}.xlsx`)
 }

@@ -1,5 +1,5 @@
 import { monthBounds, scheduleCongregationId, scheduleCongregationName, scheduleSpeakerNames, type SpeakersRoot } from './oradores-domain.ts'
-import { combinedCongregationTitle, localCongregationName } from './oradores-congregations.ts'
+import { combinedCongregationTitle, localSpeakerOriginName } from './oradores-congregations.ts'
 
 /** Only printable data: confirmation and administrative notes do not change the PDF. */
 export function publicationSource(root: SpeakersRoot, month: string): string {
@@ -11,7 +11,7 @@ export function publicationSource(root: SpeakersRoot, month: string): string {
       const theme = root.temas?.[item.temaId ?? ''], destination = congregations[scheduleCongregationId(item)]
       return [item.data, item.tipo==='saida_orador'?(root.oradores?.[item.oradorId??'']?.secao??item.secao??'s2'):item.secao??'s2', item.tipo, scheduleSpeakerNames(item,root.oradores??{}),
         theme?.numero ?? item.temaNumero ?? '-', item.tipo === 'saida_orador' ? '' : theme?.titulo ?? item.temaTitulo ?? '-',
-        item.tipo === 'discurso_local' ? localCongregationName(item,congregations) : destination?.nome ?? scheduleCongregationName(item) ?? '-',
+        item.tipo === 'discurso_local' ? localSpeakerOriginName(item,congregations) : destination?.nome ?? scheduleCongregationName(item) ?? '-',
         item.tipo === 'saida_orador' ? destination?.localizacao?.trim() || '-' : '']
     })
   return JSON.stringify([month, localName, rows])

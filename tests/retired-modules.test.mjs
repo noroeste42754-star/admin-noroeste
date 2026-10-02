@@ -73,5 +73,6 @@ test('rota de Oradores existe e módulos legados continuam ausentes', async () =
   }
   await assert.rejects(access(new URL('../netlify/functions/secretary-report.ts', import.meta.url)))
   const packageJson = JSON.parse(await readFile(new URL('../package.json', import.meta.url), 'utf8'))
-  for (const dependency of ['docx', 'exceljs', 'jszip']) assert.equal(dependency in packageJson.dependencies, false)
+  for (const dependency of ['docx', 'jszip']) assert.equal(dependency in packageJson.dependencies, false)
+  assert.equal('exceljs' in packageJson.dependencies, true, 'XLSX é exportação ativa e carregada somente quando solicitada')
 })
