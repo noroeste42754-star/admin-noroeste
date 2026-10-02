@@ -477,15 +477,12 @@ export function computeGeneration(
   roleFilter: TaskRole | null,
   generatedAt: string,
   targetPeriodId?: string,
-  onlyPending = false,
-  pendingFromDate = '',
   options?: Partial<TaskGenerationRules>,
 ): GenerationResult {
   const rules = normalizeTaskGenerationRules(options ?? context.engineRules)
   context = { ...context, engineRules:rules }
   const targets = meetingEntries(context.periods)
     .filter(entry => (!targetPeriodId || entry.periodId === targetPeriodId) && entry.meeting.date && entry.meeting.date >= startDate && canonicalMeetingType(entry.meeting.type) && !meetingIsBlocked(context, entry.meeting))
-    .filter(entry => !onlyPending || Boolean(entry.meeting.date && entry.meeting.date >= pendingFromDate))
     .sort((a, b) => String(a.meeting.date).localeCompare(String(b.meeting.date)) || a.meetingId.localeCompare(b.meetingId))
   if (!targets.length) return { aborted: true, patch: {}, generated: 0, errors: ['Nenhuma reunião válida encontrada a partir da data informada.'] }
   const locked = [...new Set(targets.filter(entry => context.periods[entry.periodId]?.locked).map(entry => entry.periodId))]

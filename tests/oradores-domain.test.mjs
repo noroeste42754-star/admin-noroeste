@@ -2,7 +2,7 @@ import { publicationSource, publicationHash } from '../src/modules/oradores-publ
 import { messageAddress, speakerAssignmentMessage } from '../src/modules/oradores-messages.ts'
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { monthBounds, normalizeSpeakersRoot, scheduleStatus, speakerPendingItems, scheduleBaseForEdit, isDuplicateSchedule, speakerLinkOptions } from '../src/modules/oradores-domain.ts'
+import { monthBounds, normalizeSpeakersRoot, scheduleBaseForEdit, isDuplicateSchedule, speakerLinkOptions } from '../src/modules/oradores-domain.ts'
 import { canonicalSpeaker, resolveSpeakerMasterId, repertoireNumbers, parseRepertoire, matchesSpeaker, speakerConflicts } from '../src/modules/oradores-editor-domain.ts'
 import { hasSpeakerAssignment } from '../src/modules/tarefas-domain.ts'
 import { collectAgendaEvents } from '../src/modules/individual-domain.ts'
@@ -82,7 +82,7 @@ test('conflitos detectam identidade duplicada, segundo orador, tarefas e indispo
   assert.deepEqual(speakerConflicts('a','2026-11-01',root,master,{}, {},'other'),[])
 })
 test('masterId direto mantém conflitos de Tarefas e Agenda pessoal sem depender de tarefas/people',()=>{
-  const talks={oradores:{o:{nome:'Um',masterId:'m',pessoaId:'outro'}},programacao:{p:{data:'2026-11-01',tipo:'discurso_local',status:'confirmado',oradorId:'o'}}}
+  const talks={oradores:{o:{nome:'Um',masterId:'m',pessoaId:'outro'}},programacao:{p:{data:'2026-11-01',tipo:'discurso_local',status:'confirmado',oradorId:'o',temaTitulo:'Tema'}}}
   assert.equal(hasSpeakerAssignment('t','2026-11-01',{people:{t:{masterId:'m'}},discursos:talks}),true)
   assert.equal(hasSpeakerAssignment('t','2026-11-01',{people:{t:{masterId:'outro'}},discursos:talks}),false)
   const root={master:{pessoas:{m:{name:'Um',active:true},outro:{name:'Outro',active:true}}},tarefas:{discursos:talks}}
@@ -113,13 +113,6 @@ test('seletor preserva vínculo central, inativo e ausente', () => {
   assert.ok(speakerLinkOptions(people,'legacy').some(x=>x.value==='legacy'))
 })
 
-test('entrada de pendências não mistura cadastros gerais sem programação', () => {
-  const root=normalizeSpeakersRoot({oradores:{o:{nome:'Local',tipo:'local',ativo:true}}})
-  assert.equal(speakerPendingItems(root).length,0)
-  root.oradores.o.pessoaId='p'
-  assert.ok(!speakerPendingItems(root).some(x=>x.id==='speaker-link-o'))
-})
-
 test('normaliza os registros atuais sem perder os campos principais', () => {
   const root = normalizeSpeakersRoot({
     oradores:{ o1:{ nome:'João', tipo:'local', funcao:'anciao', ativo:true, temaIds:{ tema_001:true } } },
@@ -128,18 +121,8 @@ test('normaliza os registros atuais sem perder os campos principais', () => {
   })
   assert.equal(root.oradores.o1.nome, 'João')
   assert.deepEqual(root.oradores.o1.temaIds, ['tema_001'])
-  assert.equal(scheduleStatus(root.programacao.p1), 'confirmado')
-})
-
-test('pendências preservam falta de orador, tema e reconfirmação', () => {
-  const root = normalizeSpeakersRoot({ programacao:{
-    vazio:{ data:'2026-09-20', tipo:'discurso_local', status:'por_definir' },
-    perto:{ data:'2026-09-21', tipo:'discurso_local', status:'confirmado', oradorNome:'José', temaTitulo:'Tema', confirmacao:{ status:true } },
-  } })
-  const pending = speakerPendingItems(root, '2026-09-19')
-  assert.ok(pending.some(item => item.title.includes('Sem orador')))
-  assert.ok(pending.some(item => item.title.includes('Sem tema')))
-  assert.ok(pending.some(item => item.title.startsWith('Reconfirmar')))
+  assert.equal(root.programacao.p1.confirmacao.status, true, 'o histórico continua legível')
+  assert.equal(normalizeSpeakersRoot({programacao:{novo:{data:'2026-09-27',tipo:'discurso_local'}}}).programacao.novo.status,undefined,'registros novos não ganham confirmação implícita')
 })
 
 test('limites mensais usam o calendário real', () => {
@@ -164,21 +147,4 @@ test('comparação da publicação considera somente dados do PDF e saídas futu
   delete root.programacao.p.oradorSecundarioNome
   root.congregacoes.c.observacoes='Endereço usado no PDF antigo'
   assert.equal(publicationSource(root,'2026-09'),source,'Observações internas não fazem parte do PDF público')
-})
-
-test('pendências: um item por programação, apenas hoje até 90 dias, com destino de resolução',()=>{
- const root=normalizeSpeakersRoot({programacao:{
-  old:{data:'2025-12-31',tipo:'discurso_local'},today:{data:'2026-01-01',tipo:'discurso_local'},
-  edge:{data:'2026-04-01',tipo:'discurso_visitante',oradorNome:'Visitante',temaTitulo:'Tema'},
-  far:{data:'2026-04-02',tipo:'discurso_local'},legacy:{data:'2026-01-02',tipo:'discurso_local',secao:'s1'},
-  confirm:{data:'2026-02-10',tipo:'discurso_local',oradorNome:'Local',temaTitulo:'Tema'},
-  again:{data:'2026-01-07',tipo:'discurso_local',oradorNome:'Local',temaTitulo:'Tema',confirmacao:{status:true}},
- }})
- const rows=speakerPendingItems(root,'2026-01-01')
- assert.deepEqual(rows.map(x=>x.recordId),['today','legacy','again','confirm','edge'])
- assert.deepEqual(rows.map(x=>x.action),['oradorId','oradorId','reconfirm','confirm','congregacaoId'])
- assert.equal(new Set(rows.map(x=>x.recordId)).size,rows.length)
- assert.match(rows[0].title,/Sem orador.*Sem tema/)
- root.programacao.today.oradorNome='Definido'
- assert.equal(speakerPendingItems(root,'2026-01-01')[0].action,'themeNumber')
 })

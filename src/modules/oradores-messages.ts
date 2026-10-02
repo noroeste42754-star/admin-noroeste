@@ -1,6 +1,6 @@
 import { cleanAddress } from './agenda-location.ts'
 import { contextualMessage, displayPhone, messageDate, SPEAKER_FOOTER } from './message-domain.ts'
-import { scheduleCongregationId, scheduleCongregationName, type SpeakersRoot, type TalkSchedule } from './oradores-domain.ts'
+import { exchangeReady, scheduleCongregationId, scheduleCongregationName, type SpeakersRoot, type TalkSchedule } from './oradores-domain.ts'
 
 export function messageAddress(value=''):string {
   const address=cleanAddress(value)
@@ -54,17 +54,9 @@ export function assignmentsMessage(root:SpeakersRoot,id:string,today:string,temp
   const details=`*${name}*\n\n${entries.map(e=>e.text).join('\n\n')}`
   return contextualMessage('oradores',template,`Olá, segue suas próximas designações:\n\n${details}${entries.some(e=>e.talk)?'\n\n'+SPEAKER_FOOTER:''}`,details,name)
 }
-export function confirmationMessage(item:TalkSchedule,root:SpeakersRoot,template?:string,localTime=''):string {
-  const name=root.oradores?.[item.oradorId??'']?.nome||item.oradorNome||'irmão'
-  const destination=item.tipo==='saida_orador'?root.congregacoes?.[scheduleCongregationId(item)]:localCongregation(root,item)
-  const time=item.tipo==='saida_orador'?destination?.horario:item.horarioLocal||localTime||destination?.horario
-  const address=messageAddress(destination?.localizacao)
-  const details=[messageDate(item.data,time),item.tipo==='saida_orador'?'':`🏛️ ${item.secao==='s1'?'1ª seção':'2ª seção'}`,themeLine(item,root),address?`📍 Endereço: ${address}`:''].filter(Boolean).join('\n')
-  return contextualMessage('oradores',template,`Olá, ${name}! Confirmando seu discurso:\n\n${details}\n\nPode confirmar?`,`${details}\n\nPode confirmar?`,name)
-}
-export function exchangesMessage(root:SpeakersRoot,id:string,today:string,template?:string,localTime='',confirmedOnly=false,section:'s1'|'s2'='s2'):string {
+export function exchangesMessage(root:SpeakersRoot,id:string,today:string,template?:string,localTime='',section:'s1'|'s2'='s2'):string {
   const congregation=root.congregacoes?.[id],name=congregation?.contato||''
-  const rows=Object.values(root.programacao??{}).filter(item=>(item.secao??'s2')===section&&item.data>=today&&item.tipo!=='discurso_local'&&scheduleCongregationId(item)===id&&(!confirmedOnly||item.status==='confirmado')).sort((a,b)=>a.data.localeCompare(b.data))
+  const rows=Object.values(root.programacao??{}).filter(item=>(item.secao??'s2')===section&&item.data>=today&&item.tipo!=='discurso_local'&&scheduleCongregationId(item)===id&&exchangeReady(item)).sort((a,b)=>a.data.localeCompare(b.data))
   const groups=[['discurso_visitante','🎙️ *Convites*'],['saida_orador','🚗 *Saídas*']].map(([kind,label])=>{
     const matches=rows.filter(item=>item.tipo===kind)
     return matches.length?`${label}\n\n${matches.map(item=>[messageDate(item.data,kind==='saida_orador'?congregation?.horario:item.horarioLocal||localTime||localCongregation(root,item)?.horario),`👤 ${root.oradores?.[item.oradorId??'']?.nome||item.oradorNome||'A definir'}`,themeLine(item,root)].join('\n')).join('\n\n')}`:''

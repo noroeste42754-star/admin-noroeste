@@ -49,7 +49,7 @@ test('Oradores bloqueia entrada por vínculo, segundo orador e identidade centra
 test('geração exclui orador S2 e respeita checkbox desativado', () => {
   const context=baseContext({p1:basePerson()})
   context.discursos={oradores:{o1:{pessoaId:'p1'}},programacao:{d1:{data:'2026-09-12',secao:'s2',oradorId:'o1'}}}
-  const run=enabled=>computeGeneration(context,'2026-09-01','entrada','2026-09-01T00:00:00Z','2026-09',false,'',{evitarConflitosOradores:enabled})
+  const run=enabled=>computeGeneration(context,'2026-09-01','entrada','2026-09-01T00:00:00Z','2026-09',{evitarConflitosOradores:enabled})
   const blocked=run(true),allowed=run(false)
   assert.equal(blocked.aborted,false)
   assert.equal(blocked.patch['2026-09/meetings/m1/assignments/entrada'],null)
@@ -284,26 +284,10 @@ test('geração de uma função não exige que as outras colunas já estejam pre
   assert.equal(result.patch['2026-09/meetings/m1/assignments/leitor'], undefined)
 })
 
-test('geração somente de datas pendentes ignora reuniões anteriores', () => {
-  const people = Object.fromEntries(Array.from({ length: 8 }, (_, index) => [
-    `p${index + 1}`,
-    basePerson({ name: `Pessoa ${index + 1}` }),
-  ]))
-  const context = baseContext(people, {
-    date: '2026-09-12', type: 'weekend', assignments: { leitor: 'p1' }, manualEdits: {},
-  })
-  context.periods['2026-09'].meetings.old = { date: '2026-09-05', type: 'weekend', assignments: {}, manualEdits: {} }
-  const result = computeGeneration(context, '2026-09-01', null, '2026-09-01T12:00:00.000Z', '2026-09', true, '2026-09-10')
-  assert.equal(result.aborted, false)
-  assert.ok(result.patch['2026-09/meetings/m1/assignments/leitor'])
-  assert.ok(result.patch['2026-09/meetings/m1/assignments/mic1'])
-  assert.equal(result.patch['2026-09/meetings/old/assignments/leitor'], undefined)
-})
-
 test('regras opcionais podem impedir o reaproveitamento do presidente e ficam registradas', () => {
   const people = Object.fromEntries(Array.from({ length: 8 }, (_, index) => [`p${index + 1}`, basePerson({ name:`Pessoa ${index + 1}` })]))
   const context = baseContext(people)
-  const result = computeGeneration(context, '2026-09-01', null, '2026-09-01T12:00:00.000Z', '2026-09', false, '', {
+  const result = computeGeneration(context, '2026-09-01', null, '2026-09-01T12:00:00.000Z', '2026-09', {
     presidenteSegundaTarefa:false,
     equilibrarDesignacoes:false,
     evitarRepetirFuncao:false,

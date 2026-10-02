@@ -464,9 +464,6 @@ body:has(.record-editor-dialog[open]) { overflow: hidden; }
 .task-assignment-row > strong { flex: 1; min-width: 0; }
 .task-assignment-row .btn { padding: 5px 8px; }
 .task-meeting-fields { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 10px; }
-.oradores-more-actions { margin-top: 8px; }
-.oradores-more-actions > summary { width: fit-content; color: var(--blue-deep); font-size: .82rem; font-weight: 600; cursor: pointer; }
-.oradores-more-actions > .service-actions { margin-top: 8px; }
 @media (max-width: 560px) {
   .record-editor-dialog { width: 100vw; max-width: none; max-height: 100dvh; height: 100dvh; margin: 0; border-radius: 0; padding-bottom: env(safe-area-inset-bottom); }
 }
@@ -1112,8 +1109,6 @@ button:focus-visible, summary:focus-visible { outline:2px solid var(--blue-mid);
 .oradores-row { display:flex; align-items:center; justify-content:space-between; gap:12px; min-height:58px; padding:10px 0; border-bottom:1px solid var(--border); }
 .oradores-row > div { min-width:0; }
 .status-pill { display:inline-flex; align-items:center; min-height:26px; padding:3px 8px; border-radius:999px; background:var(--surface-2); color:var(--ink-2); font-size:.72rem; font-weight:700; white-space:nowrap; }
-.status-confirmado { color:var(--success); }
-.status-por_definir { color:var(--danger); }
 .oradores-check-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:8px 14px; margin:14px 0; }
 .oradores-check { display:flex; align-items:flex-start; gap:8px; min-height:34px; font-size:.88rem; }
 .oradores-check input { margin-top:3px; }

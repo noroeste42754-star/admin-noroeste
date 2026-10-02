@@ -110,12 +110,10 @@ let context: AppContext
 let stopDisclosures: (() => void) | undefined
 const TAREFAS_PERIOD_KEY = 'noroeste:tarefas:period'
 const TAREFAS_PERIOD_MODE_KEY = 'noroeste:tarefas:period-mode'
-const TAREFAS_PENDING_DATES_KEY = 'noroeste:tarefas:pending-dates'
 const TAREFAS_ROLE_KEY = 'noroeste:tarefas:generate-role'
 
 let selectedPeriodMonth = monthNow()
 let selectedPeriodMode: 'month' | 'bimester' = 'month'
-let onlyPendingMeetings = localStorage.getItem(TAREFAS_PENDING_DATES_KEY) === 'true'
 let selectedGenerateRole = localStorage.getItem(TAREFAS_ROLE_KEY) ?? ''
 let participantSearch = ''
 let participantMeetingRule = ''
@@ -369,7 +367,6 @@ function renderEscala(): void {
           <div class="form-group" style="margin:0"><label class="form-label" for="tarefasGenerateRole">Função</label><select id="tarefasGenerateRole" class="form-select"><option value="">Escolha a função</option>${TASK_ROLES.map(role => `<option value="${role}" ${role === selectedGenerateRole ? 'selected' : ''}>${escapeHtml(TASK_ROLE_LABELS[role])}</option>`).join('')}</select></div>
           <div class="scale-actions" style="align-items:end"><button id="btnGenerateTaskRole" class="btn btn-ghost" type="button" ${locked ? 'disabled' : ''}>Gerar função</button><button id="btnClearTaskRole" class="btn btn-danger" type="button" ${locked ? 'disabled' : ''}>Limpar função</button></div>
         </div>
-        <label style="display:flex;align-items:center;gap:7px;margin-top:12px;font-size:.84rem;color:var(--ink-2)"><input id="tarefasOnlyPending" type="checkbox" ${onlyPendingMeetings ? 'checked' : ''}> Apenas datas pendentes</label>
         <div style="display:flex;gap:8px;align-items:center;margin-top:12px"><label class="form-label" for="tarefasPrintFont" style="margin:0;white-space:nowrap">Letra do PDF</label><input id="tarefasPrintFont" class="form-input" type="range" min="${PRINT_MIN_PT}" max="${PRINT_MAX_PT}" step="1" value="${font}" style="padding:0;flex:1"><span id="tarefasPrintFontValue" style="min-width:42px;text-align:right;font-size:.82rem;font-weight:700;color:var(--ink-2)">${font} pt</span></div>
       </details>
     </div>
@@ -401,12 +398,12 @@ function renderEscala(): void {
     if (!monthInput || !/^\d{4}-\d{2}$/.test(monthInput.value)) { toast('Selecione um mês válido'); return }
     selectedPeriodMonth = monthInput.value
     localStorage.setItem(TAREFAS_PERIOD_KEY, selectedPeriodMonth)
-    void generateScale(`${selectedPeriodMonth}-01`, 'month', null, onlyPendingMeetings)
+    void generateScale(`${selectedPeriodMonth}-01`, 'month', null)
   })
   document.getElementById('btnGenerateTaskRole')?.addEventListener('click', () => {
     const role = (document.getElementById('tarefasGenerateRole') as HTMLSelectElement).value as TaskRole
     if (!role) { toast('Escolha a função que deseja gerar'); return }
-    void generateScale(`${selectedPeriodMonth}-01`, periodMode, role, onlyPendingMeetings)
+    void generateScale(`${selectedPeriodMonth}-01`, periodMode, role)
   })
   document.getElementById('btnClearTaskRole')?.addEventListener('click', () => {
     const role = (document.getElementById('tarefasGenerateRole') as HTMLSelectElement).value as TaskRole
@@ -415,10 +412,6 @@ function renderEscala(): void {
   })
   document.getElementById('btnToggleTaskLock')?.addEventListener('click', () => void toggleTaskLock(selectedPeriodId))
   document.getElementById('btnClearTaskScale')?.addEventListener('click', () => void clearTaskScale(selectedPeriodId))
-  document.getElementById('tarefasOnlyPending')?.addEventListener('change', event => {
-    onlyPendingMeetings = (event.target as HTMLInputElement).checked
-    localStorage.setItem(TAREFAS_PENDING_DATES_KEY, String(onlyPendingMeetings))
-  })
   document.getElementById('tarefasGenerateRole')?.addEventListener('change', event => {
     selectedGenerateRole = (event.target as HTMLSelectElement).value
     localStorage.setItem(TAREFAS_ROLE_KEY, selectedGenerateRole)
@@ -517,7 +510,7 @@ async function clearTaskRole(periodId: string, role: TaskRole): Promise<void> {
   } catch { toast('Não foi possível limpar a função') }
 }
 
-async function generateScale(startDate: string, mode: 'month' | 'bimester', role: TaskRole | null, onlyPending: boolean): Promise<void> {
+async function generateScale(startDate: string, mode: 'month' | 'bimester', role: TaskRole | null): Promise<void> {
   if(generatingTaskScale)return
   generatingTaskScale=true
   const button = document.getElementById('btnGenerateScale') as HTMLButtonElement | null
@@ -535,7 +528,7 @@ async function generateScale(startDate: string, mode: 'month' | 'bimester', role
       return
     }
     const context = { ...domainContext(), periods: canonical.periods }
-    const result = computeGeneration(context, startDate, role, generatedAt, canonical.periodId, onlyPending, todayStr(), planning.engineRules)
+    const result = computeGeneration(context, startDate, role, generatedAt, canonical.periodId, planning.engineRules)
     if (result.aborted) {
       showGenerationErrors(result.errors)
       return

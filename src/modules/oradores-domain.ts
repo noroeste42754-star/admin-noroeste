@@ -44,7 +44,7 @@ export interface SpeakerCongregation {
 export interface TalkSchedule {
   data: string
   tipo: TalkKind
-  status: TalkStatus
+  status?: TalkStatus // Mantido apenas para leitura dos registros históricos.
   oradorId?: string
   oradorNome?: string
   oradorSecundarioId?: string
@@ -108,9 +108,6 @@ export interface SpeakersRoot {
 export const TALK_KIND_LABEL: Record<TalkKind, string> = {
   discurso_local:'Discurso local', discurso_visitante:'Discurso visitante', saida_orador:'Saída de orador',
 }
-export const TALK_STATUS_LABEL: Record<TalkStatus, string> = {
-  por_definir:'Por definir', por_confirmar:'A confirmar', confirmado:'Confirmado',
-}
 export const SPEAKER_ROLE_LABEL: Record<SpeakerRole, string> = {
   anciao:'Ancião', servo_ministerial:'Servo ministerial', publicador:'Publicador',
 }
@@ -142,7 +139,7 @@ export function normalizeSpeakersRoot(value: unknown): SpeakersRoot {
     nome:text(item['nome']), cidade:text(item['cidade']), tipo:item['tipo'] === 'local' ? 'local' : 'visitante', ativa:bool(item['ativa'], true), contato:text(item['contato']), telefone:text(item['telefone']), diaReuniao:text(item['diaReuniao']), horario:text(item['horario']), localizacao:text(item['localizacao']), mapa:text(item['mapa']), observacoes:text(item['observacoes']), ...([90,180,365].includes(Number(item['horizonteDatas'])) ? { horizonteDatas:Number(item['horizonteDatas']) as 90|180|365 } : {}), ...(section(item['secao']) ? { secao:section(item['secao']) } : {}),
   } satisfies SpeakerCongregation] }))
   const schedule = Object.fromEntries(Object.entries(row(source['programacao'])).map(([id, raw]) => { const item=row(raw), confirmation=row(item['confirmacao']), reconfirmation=row(item['reconfirmacao']); const kind = ['discurso_local','discurso_visitante','saida_orador'].includes(text(item['tipo'])) ? text(item['tipo']) as TalkKind : 'discurso_local'; const explicit = text(item['status']); const confirmed = confirmation['status'] === true || explicit === 'confirmado'; const status:TalkStatus = confirmed ? 'confirmado' : explicit === 'por_confirmar' ? 'por_confirmar' : 'por_definir'; return [id, {
-    ...item, data:text(item['data']), tipo:kind, status, ...(section(item['secao']) ? { secao:section(item['secao']) } : {}),
+    ...item, data:text(item['data']), tipo:kind, ...(explicit || Object.keys(confirmation).length ? { status } : {}), ...(section(item['secao']) ? { secao:section(item['secao']) } : {}),
     ...(Object.keys(confirmation).length ? { confirmacao:{ status:confirmation['status'] === true, confirmadoEm:text(confirmation['confirmadoEm']) } } : {}),
     ...(Object.keys(reconfirmation).length ? { reconfirmacao:{ status:reconfirmation['status'] === true, confirmadoEm:text(reconfirmation['confirmadoEm']) } } : {}),
   } as TalkSchedule] }))
@@ -164,40 +161,13 @@ export function normalizeSpeakerEvents(value: unknown): Record<string, SpeakerEv
 
 export function scheduleCongregationId(item: TalkSchedule): string { return item.tipo === 'saida_orador' ? item.congregacaoDestinoId ?? '' : item.congregacaoOrigemId ?? '' }
 export function scheduleCongregationName(item: TalkSchedule): string { return item.tipo === 'saida_orador' ? item.congregacaoDestinoNome ?? '' : item.congregacaoOrigemNome ?? '' }
-export function scheduleStatus(item: TalkSchedule): TalkStatus {
-  if (item.confirmacao?.status || item.status === 'confirmado') return 'confirmado'
-  if (!item.oradorId && !item.oradorNome) return 'por_definir'
-  return item.status === 'por_definir' ? 'por_confirmar' : item.status
+export function exchangeReady(item: TalkSchedule): boolean {
+  return Boolean((item.oradorId || item.oradorNome) && (item.temaId || item.temaTitulo || item.temaNumero) && (scheduleCongregationId(item) || scheduleCongregationName(item)))
 }
-
-import { isValidCivilDate as validIsoDate, fortalezaToday } from './civil-date.ts'
+import { isValidCivilDate as validIsoDate } from './civil-date.ts'
 export { validIsoDate }
 export function phoneDigits(value: string): string { return value.replace(/\D/g, '').slice(0, 13) }
 export function newSpeakerId(prefix: string): string { return `${prefix}-${Date.now().toString(36)}-${crypto.getRandomValues(new Uint32Array(1))[0]!.toString(36)}` }
 export function monthBounds(month: string): { start:string; end:string } { const [year, number]=month.split('-').map(Number); return { start:`${month}-01`, end:new Date(Date.UTC(year!, number!, 0)).toISOString().slice(0,10) } }
 export function formatSpeakerDate(value: string): string { if (!validIsoDate(value)) return value || 'Sem data'; return new Intl.DateTimeFormat('pt-BR', { weekday:'short', day:'2-digit', month:'2-digit', year:'numeric', timeZone:'UTC' }).format(new Date(`${value}T12:00:00Z`)).replace('.', '') }
 export function sameMonth(value: string, month: string): boolean { return value.startsWith(`${month}-`) }
-
-export interface SpeakerPendingItem {
-  id:string; severity:'alta'|'media'; title:string; detail:string; date:string
-  screen:'programacao'; recordId:string; action:'oradorId'|'themeNumber'|'congregacaoId'|'confirm'|'reconfirm'
-}
-export function speakerPendingItems(root: SpeakersRoot, today = fortalezaToday()): SpeakerPendingItem[] {
-  const limit = new Date(`${today}T12:00:00Z`); limit.setUTCDate(limit.getUTCDate()+90); const horizon=limit.toISOString().slice(0,10)
-  const items:SpeakerPendingItem[]=[]
-  for (const [id,item] of Object.entries(root.programacao ?? {})) {
-    if(item.data<today||item.data>horizon)continue
-    const missing:{label:string;action:SpeakerPendingItem['action']}[]=[]
-    if(!item.oradorId&&!item.oradorNome)missing.push({label:'Sem orador',action:'oradorId'})
-    if(!item.temaId&&!item.temaTitulo)missing.push({label:'Sem tema',action:'themeNumber'})
-    if(item.tipo!=='discurso_local'&&!scheduleCongregationId(item)&&!scheduleCongregationName(item))missing.push({label:'Sem congregação',action:'congregacaoId'})
-    const name=root.oradores?.[item.oradorId??'']?.nome || item.oradorNome || 'Orador a definir'
-    const detail=`${formatSpeakerDate(item.data)} · ${item.secao==='s1'?'1ª seção':'2ª seção'} · ${TALK_KIND_LABEL[item.tipo]} · ${name}`
-    const base={id:`schedule-${id}`,screen:'programacao' as const,recordId:id,date:item.data,detail}
-    if(missing.length)items.push({...base,severity:missing[0]!.action==='oradorId'?'alta':'media',title:missing.map(x=>x.label).join(' · '),action:missing[0]!.action})
-    else if(scheduleStatus(item)==='por_confirmar')items.push({...base,severity:'media',title:'Aguardando confirmação',action:'confirm'})
-    else if(Math.ceil((Date.parse(`${item.data}T12:00:00Z`)-Date.parse(`${today}T12:00:00Z`))/86400000)<=7&&scheduleStatus(item)==='confirmado'&&!item.reconfirmacao?.status)
-      items.push({...base,severity:'alta',title:'Reconfirmar — está perto',action:'reconfirm'})
-  }
-  return items.sort((a,b)=>a.date.localeCompare(b.date)||a.title.localeCompare(b.title,'pt-BR'))
-}

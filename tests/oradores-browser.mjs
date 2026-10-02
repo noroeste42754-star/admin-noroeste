@@ -78,7 +78,6 @@ try {
     await page.locator('#scheduleSearch').dispatchEvent('change')
     await page.getByText('Nenhum resultado para esta busca ou filtro.',{exact:true}).waitFor()
     await page.locator('#clearScheduleFilters').click()
-    await page.locator('.oradores-card').filter({has:page.locator('[data-substitute-date="2026-09-20"]')}).locator('.oradores-more-actions summary').click()
     await page.locator('[data-substitute-date="2026-09-20"]').click()
     assert.equal(await page.locator('#emergencyDate').count(),0)
     assert.equal(await page.locator('#substitutionContext').innerText(),'Substituição para 20/09/2026')

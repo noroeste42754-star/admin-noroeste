@@ -1,7 +1,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import { whatsappPhone, contextualMessage, SPEAKER_FOOTER, SPEAKER_TEMPLATE } from '../src/modules/message-domain.ts'
-import { assignmentsMessage, assignmentEntries, confirmationMessage, exchangesMessage, availableMessage } from '../src/modules/oradores-messages.ts'
+import { assignmentsMessage, assignmentEntries, exchangesMessage, availableMessage } from '../src/modules/oradores-messages.ts'
 import { availableDates } from '../src/modules/oradores-available.ts'
 import { tasksPersonMessage, tasksDayMessage } from '../src/modules/tarefas-messages.ts'
 const root={
@@ -32,19 +32,15 @@ test('designações unem segundo orador e Sentinela em ordem; só discurso receb
   assert.equal(assignmentEntries({...only,programacao:{local:{...only.programacao.local,secao:'s1'}}},'b','2026-10-01').length,0)
   assert.equal(assignmentEntries(root,'b','2027-01-01').length,0)
 })
-test('confirmação tem pergunta, horário correto e endereço sem mapa',()=>{
-  const msg=confirmationMessage(root.programacao.out,root)
-  for(const value of ['Olá, Beto!','18:00','Tema 70','Endereço: Rua Dois, 20','Pode confirmar?'])assert.ok(msg.includes(value))
-  const local=confirmationMessage(root.programacao.local,root,undefined,'10:00')
-  assert.ok(local.includes('10:00'));assert.ok(local.includes('Rua Um, 10'));assert.ok(!local.includes('4W3V'))
-})
 test('intercâmbios separam grupos e usam horário de quem recebe',()=>{
   const msg=exchangesMessage(root,'dest','2026-10-01',undefined,'09:45')
   for(const value of ['Olá, José!','🎙️ *Convites*','🚗 *Saídas*','👤 Visitante','👤 Beto','09:45','18:00','Tema 70'])assert.ok(msg.includes(value))
   assert.ok(!exchangesMessage(root,'dest','2026-10-20').includes('🚗'))
-  const finalized=exchangesMessage({...root,programacao:{...root.programacao,out:{...root.programacao.out,status:'confirmado'},incoming:{...root.programacao.incoming,status:'por_confirmar'}}},'dest','2026-10-01',undefined,'09:45',true)
-  assert.match(finalized,/🚗 \*Saídas\*/)
-  assert.ok(!finalized.includes('🎙️ *Convites*'))
+  const first=exchangesMessage({...root,programacao:{...root.programacao,out:{...root.programacao.out,secao:'s1'}}},'dest','2026-10-01',undefined,'09:45','s1')
+  assert.match(first,/🚗 \*Saídas\*/)
+  assert.ok(!first.includes('🎙️ *Convites*'))
+  const incomplete=exchangesMessage({...root,programacao:{...root.programacao,out:{...root.programacao.out,temaId:undefined,temaTitulo:undefined,temaNumero:undefined}}},'dest','2026-10-01')
+  assert.ok(!incomplete.includes('🚗 *Saídas*'))
 })
 test('datas livres respeitam dia, exclusões, eventos, S2 e não confundem saída com ocupação local',()=>{
   const dates=availableDates(root,{e:{data:'2026-11-01',tipo:'celebracao'}},{meetingDays:{weekendDow:0},excludedDates:['2026-11-08']},'2026-10-01',40)

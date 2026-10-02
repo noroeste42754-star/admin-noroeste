@@ -55,7 +55,7 @@ test('lista de pessoas ausente ou malformada vira coleção vazia', () => {
 
 test('agrega apenas atribuicoes do masterId solicitado', () => {
   const events = collectAgendaEvents(root, 'm1')
-  assert.deepEqual(events.map(event => event.source), ['tarefas', 'limpeza', 'escala', 'limpeza', 'servicoCampo'])
+  assert.deepEqual(events.map(event => event.source), ['tarefas', 'limpeza', 'escala', 'limpeza', 'oradores', 'servicoCampo'])
   assert.equal(events.some(event => event.title === 'Microfone 1'), false)
   assert.equal(events.find(event => event.source === 'tarefas')?.status, 'futuro')
   assert.equal(events.find(event => event.source === 'escala')?.title, 'Escala TPL')
@@ -66,7 +66,8 @@ test('respeita permissao por fonte e ignora modulos removidos', () => {
   const copy = structuredClone(root); copy.tarefas.discursos.programacao.p1.observacoes = 'x'.repeat(300)
   const events = collectAgendaEvents(copy, 'm1', { escala:false })
   assert.equal(events.some(event => event.source === 'escala'), false)
-  assert.equal(events.some(event => ['oradores', 'programacao'].includes(event.source)), false)
+  assert.equal(events.some(event => event.source === 'oradores'), true)
+  assert.equal(events.some(event => event.source === 'programacao'), false)
 })
 
 test('Serviço de Campo só publica dirigente de mês fechado para o Quadro', () => {
@@ -166,7 +167,7 @@ test('reuniao de hoje permanece no texto ate o fim do dia civil', () => {
 
 test('calendario pessoal exporta os quatro modulos incluindo as duas limpezas', () => {
   const events = collectAgendaEvents(root, 'm1')
-  assert.deepEqual([...new Set(events.map(event => event.source))].sort(), ['escala', 'limpeza', 'servicoCampo', 'tarefas'])
+  assert.deepEqual([...new Set(events.map(event => event.source))].sort(), ['escala', 'limpeza', 'oradores', 'servicoCampo', 'tarefas'])
   const ics = agendaToIcs(events, '2026-09-15T23:59:00-03:00')
   assert.equal((ics.match(/BEGIN:VEVENT/g) || []).length, events.length)
   assert.equal((ics.match(/SUMMARY:Limpeza/g) || []).length, 2)
@@ -207,12 +208,12 @@ test('dados das reuniões selecionam datas futuras e módulos conforme o tipo', 
   assert.doesNotMatch(midweekMessage, /^VIDA E MINISTÉRIO/m)
 })
 
-test('Oradores integra as duas seções confirmadas por vínculo e inclui visitantes no quadro', () => {
+test('Oradores integra as duas seções programadas por vínculo e inclui visitantes no quadro', () => {
   const data = { master:{ pessoas:{ m1:{ name:'Ana', active:true }, m2:{ name:'Bruno', active:true } } }, tarefas:{ people:{ p1:{ masterId:'m1' }, p2:{ masterId:'m2' } }, discursos:{ oradores:{ o1:{ nome:'Ana', pessoaId:'p1', secao:'s2' }, o2:{ nome:'Bruno', pessoaId:'p2', secao:'s1' }, v1:{ nome:'Visitante' } }, temas:{ t1:{ titulo:'Tema público' } }, programacao:{
     local:{ data:'2026-09-20', tipo:'discurso_local', status:'confirmado', oradorId:'o1', temaId:'t1', observacoes:'SEGREDO' },
-    visita:{ secao:'s2', data:'2026-09-27', tipo:'discurso_visitante', status:'confirmado', oradorId:'v1' },
-    saida:{ secao:'s2', data:'2026-09-20', tipo:'saida_orador', status:'confirmado', oradorSecundarioId:'o1', congregacaoDestinoNome:'Destino' },
-    primeira:{ secao:'s1', data:'2026-09-20', status:'confirmado', oradorId:'o2' },
+    visita:{ secao:'s2', data:'2026-09-27', tipo:'discurso_visitante', status:'confirmado', oradorId:'v1', temaTitulo:'Tema visitante', congregacaoOrigemNome:'Origem' },
+    saida:{ secao:'s2', data:'2026-09-20', tipo:'saida_orador', status:'confirmado', oradorSecundarioId:'o1', temaTitulo:'Tema saída', congregacaoDestinoNome:'Destino' },
+    primeira:{ secao:'s1', data:'2026-09-20', status:'confirmado', oradorId:'o2', temaTitulo:'Tema primeira' },
     rascunho:{ secao:'s2', data:'2026-09-20', status:'por_confirmar', oradorId:'o1' },
   } } } }
   const personal = collectAgendaEvents(data, 'm1')
@@ -228,7 +229,8 @@ test('Oradores integra as duas seções confirmadas por vínculo e inclui visita
   assert.equal(meeting.length, 2)
   assert.match(boardMeetingMessage(meeting, selected), /Ana/)
   assert.match(boardMeetingMessage(meeting, selected), /Tema público/)
-  assert.doesNotMatch(JSON.stringify(board), /SEGREDO|rascunho/)
+  assert.doesNotMatch(JSON.stringify(board), /SEGREDO/)
+  assert.ok(!board.some(item=>item.id==='oradores:rascunho'))
   assert.match(boardMeetingMessage(meeting, selected), /Bruno/)
   assert.match(agendaToIcs(personal, '2026-09-01T00:00:00Z'), /oradores:local/)
 })

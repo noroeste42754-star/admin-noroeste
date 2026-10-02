@@ -115,7 +115,7 @@ test('auditoria identifica nome de participante TPL preenchido somente pelo ID',
 })
 test('Oradores usa endereço e horário do local, nunca a origem visitante',()=>{
   const root=fixture()
-  root.tarefas.discursos={oradores:{o:{masterId:'m'}},congregacoes:{local:{tipo:'local',secao:'s2',nome:'Noroeste',localizacao:'Rua Local',horario:'18:00'},dest:{tipo:'visitante',nome:'Centro',localizacao:'Rua Destino',horario:'19:30'}},programacao:{a:{data:'2026-09-20',tipo:'discurso_visitante',oradorId:'o',status:'confirmado',congregacaoOrigemId:'dest'},b:{data:'2026-09-27',tipo:'saida_orador',oradorId:'o',status:'confirmado',congregacaoDestinoId:'dest'}}}
+  root.tarefas.discursos={oradores:{o:{masterId:'m'}},congregacoes:{local:{tipo:'local',secao:'s2',nome:'Noroeste',localizacao:'Rua Local',horario:'18:00'},dest:{tipo:'visitante',nome:'Centro',localizacao:'Rua Destino',horario:'19:30'}},programacao:{a:{data:'2026-09-20',tipo:'discurso_visitante',oradorId:'o',temaTitulo:'Tema A',status:'confirmado',congregacaoOrigemId:'dest'},b:{data:'2026-09-27',tipo:'saida_orador',oradorId:'o',temaTitulo:'Tema B',status:'confirmado',congregacaoDestinoId:'dest'}}}
   const events=collectAgendaEvents(root,'m').filter(e=>e.source==='oradores')
   assert.equal(events[0].location,'Rua Local');assert.equal(events[0].time,'18:00')
   assert.equal(events[1].location,'Rua Destino');assert.equal(events[1].time,'19:30')

@@ -142,7 +142,9 @@ function speakerAgendaEvents(root: Row): { event: AgendaEvent; masterIds: string
   const tasks = rows(root['tarefas']), talks = rows(tasks['discursos']), speakers = rows(talks['oradores'])
   return Object.entries(rows(talks['programacao'])).flatMap(([id, raw]) => {
     const item = rows(raw)
-    if (item['status'] !== 'confirmado' && rows(item['confirmacao'])['status'] !== true) return []
+    if (!text(item['oradorId']) && !text(item['oradorNome']) && !text(item['oradorSecundarioId'])) return []
+    if (!text(item['temaId']) && !text(item['temaTitulo']) && !Number(item['temaNumero'])) return []
+    if (item['tipo'] && item['tipo'] !== 'discurso_local' && !text(item[item['tipo'] === 'saida_orador' ? 'congregacaoDestinoId' : 'congregacaoOrigemId']) && !text(item[item['tipo'] === 'saida_orador' ? 'congregacaoDestinoNome' : 'congregacaoOrigemNome'])) return []
     const date = text(item['data'])
     if (!validAgendaDate(date)) return []
     const ids = [text(item['oradorId']), text(item['oradorSecundarioId'])]
