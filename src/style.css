@@ -970,12 +970,24 @@ body:has(.record-editor-dialog[open]) { overflow: hidden; }
 .admin-agenda-documents { margin-top: 18px; }
 .task-mobile-scale { display:none !important; }
 .task-scale-table-wrap { overflow:auto; border:1px solid var(--border); border-radius:8px; background:var(--surface); }
-.task-scale-table { width:100%; min-width:1080px; table-layout:fixed; border-collapse:collapse; font-size:.75rem; }
+.task-scale-table { width:100%; min-width:0; table-layout:fixed; border-collapse:collapse; font-size:.75rem; }
 .task-scale-table th, .task-scale-table td { padding:7px; border-right:1px solid var(--border); border-bottom:1px solid var(--border); vertical-align:top; }
 .task-scale-table thead th { position:sticky; top:0; z-index:1; background:var(--surface-2); color:var(--ink-2); text-align:left; }
 .task-scale-table thead th:first-child, .task-scale-table tbody th { width:92px; text-align:left; }
 .task-scale-table tbody th small { display:block; margin-top:3px; color:var(--ink-3); }
 .task-not-applicable { color:var(--ink-3); }
+.task-desktop-scale, .task-scale-table-wrap { min-width:0; max-width:100%; }
+.task-scale-table th, .task-scale-table td { overflow-wrap:anywhere; }
+.task-scale-table .task-assignment-row { display:flex; flex-direction:column; align-items:stretch; gap:6px; }
+.task-scale-table .task-assignment-row > span { display:none; }
+.task-scale-table .task-assignment-row > strong { flex:none; }
+.task-scale-table .btn { width:100%; min-width:0; white-space:normal; font-size:.7rem; padding:5px; }
+.task-scale-table .service-actions { gap:5px; }
+@media (max-width:1100px) {
+  .task-desktop-scale { display:none !important; }
+  .task-mobile-scale { display:flex !important; }
+}
+
 
 .admin-reminder-grid { display: grid; grid-template-columns: minmax(90px, 1fr) minmax(0, 1fr) minmax(0, 1fr); gap: 8px; }
 .admin-reminder-grid .form-select { width: 100%; min-width: 0; }

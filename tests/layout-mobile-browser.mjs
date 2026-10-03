@@ -13,7 +13,7 @@ const data={
 const read=path=>path.split('/').filter(Boolean).reduce((value,key)=>value?.[key],data)??{}
 await mkdir(new URL('../output/layout-mobile/',import.meta.url),{recursive:true})
 try {
- for(const width of [320,360,390,430,768,1280]){
+ for(const width of [320,360,390,430,768,900,1100,1280,1440]){
   const page=await browser.newPage({viewport:{width,height:850},serviceWorkers:'block',colorScheme:width===430?'dark':'light'})
   const errors=[],writes=[]
   page.on('pageerror',e=>errors.push(e.message))
@@ -43,6 +43,17 @@ try {
     await page.locator('#btnAddPessoa').click();await page.locator('[role="dialog"]').waitFor()
     assert.equal(await page.locator('#pNome').evaluate(el=>el.labels.length>0),true)
     await page.keyboard.press('Escape');await page.locator('.modal').waitFor({state:'detached'})
+   }
+   if(module==='tarefas'){
+    assert.equal(await page.locator('#btnClearTaskScale').isVisible(),true)
+    assert.equal(await page.locator('[data-ui-preference="preserved-records"]').count(),0)
+    if(width<=1100){
+     assert.equal(await page.locator('.task-desktop-scale').isVisible(),false)
+     assert.equal(await page.locator('.task-mobile-scale').isVisible(),true)
+    }else{
+     assert.equal(await page.locator('.task-scale-table-wrap').evaluate(el=>el.scrollWidth<=el.clientWidth+1),true)
+     await page.screenshot({path:new URL('../output/layout-mobile/tarefas-'+width+'.png',import.meta.url).pathname.replace(/^\/([A-Z]:)/i,'$1'),fullPage:true})
+    }
    }
    if(module==='tarefas'&&width<=560){
     const card=page.locator('.task-mobile-scale [data-task-meeting-id]').first();await card.waitFor()

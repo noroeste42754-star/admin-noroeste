@@ -5,7 +5,7 @@ import { confirmAdvisoryWarnings } from '../ui/advisory-confirmation'
 import { closeRecordEditor, mountRecordEditor } from '../ui/record-editor'
 import { taskSubstitutes } from './substitution-domain'
 import { canonicalTaskPerson } from './central-person'
-import { fortalezaToday, fortalezaCurrentMonth, isValidCivilDate, nextCivilMonth } from './civil-date'
+import { fortalezaToday, fortalezaCurrentMonth, isValidCivilDate } from './civil-date'
 import { tasksPersonMessage, tasksDayMessage } from './tarefas-messages'
 import { copyMessageText, openMessageWhatsApp } from '../ui/message-actions'
 import { editorBusy, editorError } from '../ui/editor-feedback'
@@ -341,7 +341,6 @@ function renderEscala(): void {
     .sort((a, b) => String(a.date ?? '').localeCompare(String(b.date ?? '')))
   const font = printFont()
   const activeRules = Object.values(normalizeTaskGenerationRules(planning.engineRules)).filter(Boolean).length
-  const preservedMeetings = scaleMeetingEntries().filter(entry => entry.periodId !== selectedPeriodId && assignmentCount(entry.meeting) > 0).sort((a, b) => String(b.meeting.date).localeCompare(String(a.meeting.date))).slice(0, 12)
 
   content.innerHTML = `
     ${sectionTitle('Escala de tarefas', '')}
@@ -355,7 +354,7 @@ function renderEscala(): void {
         <button id="btnTarefasPdf" class="btn btn-ghost" type="button" ${allPeriodMeetings.length ? '' : 'disabled'}>Baixar PDF</button>
         <button id="btnTarefasXlsx" class="btn btn-ghost" type="button" ${allPeriodMeetings.length ? '' : 'disabled'}>Baixar XLSX</button>
         <button id="btnToggleTaskLock" class="btn ${locked ? 'btn-ghost' : 'btn-primary'}" type="button" ${allPeriodMeetings.length ? '' : 'disabled'}>${locked ? 'Reabrir para edição' : 'Publicar no Quadro'}</button>
-        <details data-ui-preference="scale-actions"><summary>Mais opções</summary><button id="btnClearTaskScale" class="btn btn-danger" type="button" ${locked || !allPeriodMeetings.length ? 'disabled' : ''}>Limpar escala</button></details>
+        <button id="btnClearTaskScale" class="btn btn-danger" type="button" ${locked || !allPeriodMeetings.length ? 'disabled' : ''}>Limpar escala</button>
       </div>
       <details data-ui-preference="generation-print-options" style="margin-top:12px;padding-top:10px;border-top:1px solid var(--border)">
         <summary style="cursor:pointer;font-size:.86rem;font-weight:700;color:var(--ink-2)">Refazer uma função ou ajustar a impressão</summary>
@@ -372,8 +371,7 @@ function renderEscala(): void {
       ${allPeriodMeetings.length
         ? allPeriodMeetings.map(meeting => meetingCard(meeting)).join('')
         : emptyState('Nenhuma reunião cadastrada neste período.')}
-    </div>
-    ${preservedMeetings.length ? `<details class="form-panel" data-ui-preference="preserved-records" style="margin-top:12px"><summary>Registros preservados fora do período atual (${preservedMeetings.length})</summary><div class="module-option-list" style="margin-top:10px">${preservedMeetings.map(entry => `<div class="module-list-row"><div><strong>${escapeHtml(formatDate(entry.meeting.date))}</strong><small>${canonicalMeetingType(entry.meeting.type) === 'midweek' ? 'Meio de semana' : 'Fim de semana'} · ${assignmentCount(entry.meeting)} função(ões)</small></div></div>`).join('')}</div></details>` : ''}`
+    </div>`
 
   const dayMessage=()=>tasksDayMessage((document.getElementById('taskMessageDate') as HTMLSelectElement).value,pessoas,allPeriodMeetings,'',taskMessageSettings.meetingText)
   document.getElementById('taskSendDay')?.addEventListener('click',()=>openMessageWhatsApp(dayMessage(),toast))
@@ -625,11 +623,9 @@ function renderParticipantes(): void {
     })
     .filter(([, person]) => !participantRoleFilter || person.roles?.[participantRoleFilter as TaskRole] === true)
     .sort(([, a], [, b]) => pessoaNome(a, '').localeCompare(pessoaNome(b, ''), 'pt-BR'))
-  const preparationMonth = nextCivilMonth(todayStr())
   content.innerHTML = `
     ${sectionTitle('Participantes', 'Nome, telefone e vínculo vêm do Admin. O responsável de Tarefas atualiza funções, folgas e indisponibilidades.')}
     ${context.usuario.apps.mestre ? '<div style="display:flex;justify-content:flex-end;margin-bottom:10px"><button id="btnAddTaskPerson" class="btn btn-primary" type="button">Vincular pessoa</button></div>' : ''}
-    <div class="notice"><strong>Disponibilidade para ${escapeHtml(preparationMonth.slice(5, 7) + '/' + preparationMonth.slice(0, 4))}:</strong> ${planning.availabilityReviewedMonth === preparationMonth ? 'revisada' : 'aguardando revisão'} <button id="taskReviewAvailability" class="btn btn-ghost" type="button">Marcar como revisada</button></div>
     <div class="module-form-grid" style="margin-bottom:10px">
       <div class="form-group" style="margin:0"><label class="form-label" for="taskPersonSearch">Buscar</label><input id="taskPersonSearch" class="form-input" value="${escapeHtml(participantSearch)}" placeholder="Nome da pessoa"></div>
       <div class="form-group" style="margin:0"><label class="form-label" for="taskPersonMeetingFilter">Reuniões</label><select id="taskPersonMeetingFilter" class="form-select"><option value="">Todas</option><option value="midweek" ${participantMeetingRule === 'midweek' ? 'selected' : ''}>Meio de semana</option><option value="weekend" ${participantMeetingRule === 'weekend' ? 'selected' : ''}>Fim de semana</option><option value="both" ${participantMeetingRule === 'both' ? 'selected' : ''}>Todas as reuniões</option></select></div>
@@ -643,10 +639,6 @@ function renderParticipantes(): void {
     </div>`
   content.querySelectorAll<HTMLButtonElement>('[data-whatsapp-task-person],[data-copy-task-person]').forEach(button=>button.addEventListener('click',()=>{const id=button.dataset.whatsappTaskPerson??button.dataset.copyTaskPerson??'',message=tasksPersonMessage(id,pessoas,scaleMeetingEntries().map(entry=>entry.meeting),todayStr(),taskMessageSettings.meetingText);if(button.dataset.copyTaskPerson!==undefined)void copyMessageText(message,toast);else openMessageWhatsApp(message,toast,personPhone(pessoas[id])??'')}))
   document.getElementById('btnAddTaskPerson')?.addEventListener('click', () => openTaskPersonModal(null))
-  document.getElementById('taskReviewAvailability')?.addEventListener('click', async () => {
-    try { await update(tarefasPlanejamentoRef, { availabilityReviewedMonth:preparationMonth }); planning.availabilityReviewedMonth=preparationMonth; toast('Disponibilidades revisadas'); renderParticipantes() }
-    catch { toast('Não foi possível registrar a revisão') }
-  })
   content.querySelectorAll<HTMLButtonElement>('[data-edit-task-person]').forEach(button => {
     button.addEventListener('click', () => openTaskPersonModal(button.dataset['editTaskPerson'] ?? null))
   })
