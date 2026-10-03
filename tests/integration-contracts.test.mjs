@@ -10,8 +10,13 @@ import { publicationIssues, publicationPeriod, periodIsPublished } from '../src/
 import { officialDocumentId } from '../src/modules/agenda-documents-domain.ts'
 import { auditIntegrations } from '../src/modules/integration-audit.ts'
 import { collectAgendaEvents } from '../src/modules/individual-domain.ts'
+import { isProductionPublicationOrigin } from '../netlify/functions/module-publication.ts'
 
 const month='2026-09'
+test('publicação de PDF usa somente o domínio de produção',()=>{
+  assert.equal(isProductionPublicationOrigin('https://noroeste.netlify.app/.netlify/functions/module-publication'),true)
+  for(const url of ['https://noroeste-testes.netlify.app/.netlify/functions/module-publication','https://main--noroeste.netlify.app/.netlify/functions/module-publication','http://localhost:8888/.netlify/functions/module-publication'])assert.equal(isProductionPublicationOrigin(url),false)
+})
 function fixture() {return {
   master:{pessoas:{m:{name:'Ana',active:true,sex:'M'}}},
   tarefas:{people:{p:{masterId:'m',active:true}},scale:{periods:{[month]:{meetings:{a:{date:'2026-09-20',type:'weekend',assignments:{presidente:'p'}}}}}},discursos:{programacao:{a:{data:'2026-09-20',tipo:'discurso_local',oradorNome:'Ana',secao:'s2'}}}},

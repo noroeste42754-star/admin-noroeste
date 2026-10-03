@@ -53,6 +53,8 @@ try{
   await page.locator('[data-quadro-date="'+date+'"]').click()
   assert.equal(await page.locator('.agenda-event').count(),5)
   assert.match(await page.locator('#quadroPanel').innerText(),/Assembleia geral/)
+  assert.match(await page.locator('.agenda-selected-day').innerText(),/6 itens/)
+  assert.doesNotMatch(await page.locator('.agenda-list').innerText(),/Oradores · duas seções/)
   await page.locator('[data-quadro-filter="s1"]').click()
   assert.equal(await page.locator('.agenda-event').count(),1)
   assert.equal((await page.locator('.agenda-list').innerText()).includes('Bruno Silva'),false)
@@ -67,6 +69,8 @@ try{
   assert.equal(await page.locator('a').filter({hasText:'Abrir PDF'}).count(),4)
   assert.equal(await page.locator('a[href="https://example.test/oradores.pdf"]').count(),1)
   assert.match(await page.locator('#quadroPanel').innerText(),/duas seções/)
+  assert.equal(await page.getByRole('heading',{name:'Avisos gerais'}).count(),1)
+  assert.doesNotMatch(await page.locator('#quadroPanel').innerText(),/Nenhum documento adicional publicado/)
   assert.equal(await page.locator('[data-quadro-tab="documentos"]').getAttribute('aria-pressed'),'true')
   for(const module of ['tarefas','oradores','escala','admin']){
    const downloaded=page.waitForEvent('download')

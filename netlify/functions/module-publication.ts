@@ -8,6 +8,10 @@ import { PUBLIC_PDF_MODULES,officialDocumentId,type PublicPdfModule } from '../.
 import { validStoragePath } from './storage-file.ts'
 import { pdfHasExpired } from '../../src/modules/pdf-expiry.ts'
 
+export function isProductionPublicationOrigin(requestUrl:string):boolean {
+  return new URL(requestUrl).origin==='https://noroeste.netlify.app'
+}
+
 export default async(request:Request):Promise<Response>=>{
   if(request.method!=='POST')return json(405,{error:'Método não permitido.'})
   try {
@@ -16,6 +20,7 @@ export default async(request:Request):Promise<Response>=>{
     const body=await objectBody(request), module=body['module'] as PublicPdfModule,id=String(body['periodId']??''),action=body['action']
     if(!PUBLIC_PDF_MODULES.some(active=>active===module)||!/^\d{4}-(0[1-9]|1[0-2])(?:-bimester)?$/.test(id))return json(400,{error:'Período inválido ou módulo retirado.'})
     if(!session.usuario.apps.mestre&&!session.usuario.apps[module]&&!(module==='oradores'&&session.usuario.apps.oradoresS1))return json(403,{error:'Acesso negado.'})
+    if(action!=='status'&&!isProductionPublicationOrigin(request.url))return json(403,{error:'Publique PDFs somente em noroeste.netlify.app.'})
     const database=adminDatabase(),key=officialDocumentId(module,id)
     if(action==='prepare'||action==='status') {
       const root:Record<string,any>={master:{}}
