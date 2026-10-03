@@ -4,7 +4,7 @@ Módulos de gestão: Admin, Escala TPL, Tarefas, Oradores da 1ª seção e Orado
 
 ## Quadro de Anúncios
 
-O endereço `/quadro/` é público, sem login, nome ou pareamento. `/agenda/` abre o mesmo Quadro para manter os links e instalações anteriores. A tela reúne Tarefas publicadas, Oradores confirmados com cadastro válido, TPL publicada, eventos gerais e PDFs públicos dos módulos e do Admin. Não retorna contatos, senhas, sessões ou cadastros Master.
+O endereço `/quadro/` é público, sem login, nome ou pareamento. `/agenda/` abre o mesmo Quadro para manter os links e instalações anteriores. A tela reúne Tarefas publicadas, a programação publicada de Oradores com cadastro válido, TPL publicada, eventos gerais e PDFs públicos dos módulos e do Admin. Não retorna contatos, senhas, sessões ou cadastros Master.
 
 Falhas de uma fonte preservam os últimos dados dessa fonte, com aviso e nova tentativa. A consulta offline requer um primeiro acesso online. PDFs mantêm o prazo existente de 60 dias. O arquivo ICS inclui as designações gerais do mês; não é uma assinatura nem notificação pessoal automática.
 

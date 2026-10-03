@@ -71,6 +71,12 @@ test('rota de Oradores existe e módulos legados continuam ausentes', async () =
       await assert.rejects(access(new URL(`../src/modules/${module}${suffix}.ts`, import.meta.url)))
     }
   }
+  for (const module of ['individual', 'limpeza', 'servico-campo']) {
+    await assert.rejects(access(new URL(`../src/modules/${module}.ts`, import.meta.url)))
+  }
+  await assert.rejects(access(new URL('../src/agenda-main.ts', import.meta.url)))
+  const legacyAgenda=await readFile(new URL('../agenda/index.html',import.meta.url),'utf8')
+  assert.match(legacyAgenda,/\/src\/quadro-main\.ts/)
   await assert.rejects(access(new URL('../netlify/functions/secretary-report.ts', import.meta.url)))
   const packageJson = JSON.parse(await readFile(new URL('../package.json', import.meta.url), 'utf8'))
   for (const dependency of ['docx', 'jszip']) assert.equal(dependency in packageJson.dependencies, false)
