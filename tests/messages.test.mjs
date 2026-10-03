@@ -1,7 +1,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import { whatsappPhone, contextualMessage, SPEAKER_FOOTER, SPEAKER_TEMPLATE } from '../src/modules/message-domain.ts'
-import { assignmentsMessage, assignmentEntries, exchangesMessage, availableMessage } from '../src/modules/oradores-messages.ts'
+import { assignmentsMessage, assignmentEntries, exchangesMessage, availableMessage, scheduleCardText } from '../src/modules/oradores-messages.ts'
 import { availableDates } from '../src/modules/oradores-available.ts'
 import { tasksPersonMessage, tasksDayMessage } from '../src/modules/tarefas-messages.ts'
 const root={
@@ -42,12 +42,33 @@ test('intercâmbios separam grupos e usam horário de quem recebe',()=>{
   const incomplete=exchangesMessage({...root,programacao:{...root.programacao,out:{...root.programacao.out,temaId:undefined,temaTitulo:undefined,temaNumero:undefined}}},'dest','2026-10-01')
   assert.ok(!incomplete.includes('🚗 *Saídas*'))
 })
+test('texto do card descreve a programação sem solicitar confirmação nem expor observações internas',()=>{
+  const message=scheduleCardText({...root.programacao.local,observacoes:'NÃO COPIAR'},root,'09:30')
+  for(const value of ['04/10/2026','09:30','2ª seção','Discurso local','Ana','Tema 70','Noroeste'])assert.ok(message.includes(value))
+  assert.ok(!/confirm|NÃO COPIAR/i.test(message))
+  const outgoing=scheduleCardText(root.programacao.out,root)
+  assert.match(outgoing,/Saída de orador/)
+  assert.match(outgoing,/Congregação de destino.*Central/)
+})
 test('datas livres respeitam dia, exclusões, eventos, S2 e não confundem saída com ocupação local',()=>{
   const dates=availableDates(root,{e:{data:'2026-11-01',tipo:'celebracao'}},{meetingDays:{weekendDow:0},excludedDates:['2026-11-08']},'2026-10-01',40)
   assert.deepEqual(dates,['2026-10-18'])
   const msg=availableMessage(root,'dest',dates,'09:30')
   assert.match(msg,/Olá, José!/);assert.match(msg,/Noroeste/);assert.match(msg,/18\/10\/2026 — 09:30/);assert.match(msg,/Endereço: Rua Um, 10/);assert.ok(!msg.includes('4W3V'))
   assert.deepEqual(availableDates(root,{}, {},'2026-10-01',90),[])
+})
+test('card sem orador continua livre em cada seção mesmo com tema ou status histórico',()=>{
+  const schedule={
+    firstBlank:{data:'2026-10-04',tipo:'discurso_local',secao:'s1',temaNumero:70,status:'confirmado'},
+    secondAssigned:{data:'2026-10-04',tipo:'discurso_local',secao:'s2',oradorSecundarioNome:'Beto'},
+    firstAssigned:{data:'2026-10-11',tipo:'discurso_local',secao:'s1',oradorId:'a'},
+    secondBlank:{data:'2026-10-11',tipo:'discurso_local',secao:'s2',temaNumero:70},
+    outgoing:{data:'2026-10-25',tipo:'saida_orador',secao:'s1',oradorId:'a'},
+  }
+  const planning={meetingDays:{weekendDow:0,weekendS1Dow:0},excludedDates:['2026-10-25']}
+  const events={blocked:{data:'2026-10-18',tipo:'celebracao'}}
+  assert.deepEqual(availableDates({programacao:schedule},events,planning,'2026-10-04',21,'s1'),['2026-10-04'])
+  assert.deepEqual(availableDates({programacao:schedule},events,planning,'2026-10-04',21,'s2'),['2026-10-11'])
 })
 test('padrão anterior migra só em memória; personalizações permanecem intactas',()=>{
   const legacy='Olá. Segue a programação de oradores:\n\n{dados_da_reuniao}\n\nAgradecemos pela atenção.'

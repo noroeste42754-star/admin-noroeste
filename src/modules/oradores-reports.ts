@@ -43,6 +43,6 @@ export function createThemesReportPdf(rows:ThemeRow[],filterLabel:string,query:s
 }
 export interface SubstitutionReportRow {name:string; themes:{numero:number;titulo:string}[]}
 export function createSubstitutionsReportPdf(rows:SubstitutionReportRow[],date:string):Promise<Uint8Array>{
-  return report('Substituições - temas disponíveis',`Data: ${themeDate(date)} | Oradores locais com temas disponíveis. Confirme a disponibilidade no aplicativo.`,
+  return report('Substituições - temas disponíveis',`Data: ${themeDate(date)} | Oradores locais com temas disponíveis. Consulte a disponibilidade diretamente com o orador.`,
     ['Orador','Nº','Tema disponível'],[155,36,340],rows.flatMap(row=>row.themes.map(theme=>[row.name,String(theme.numero),theme.titulo])))
 }

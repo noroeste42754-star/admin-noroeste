@@ -3,7 +3,7 @@ import { localPreferences, persistDisclosures } from '../ui/local-preferences'
 import { mountRecordEditor } from '../ui/record-editor'
 import { fortalezaToday, fortalezaCurrentMonth } from './civil-date'
 import { availableDates } from './oradores-available'
-import { assignmentEntries, assignmentsMessage, exchangesMessage, availableMessage } from './oradores-messages'
+import { assignmentEntries, assignmentsMessage, exchangesMessage, availableMessage, scheduleCardText } from './oradores-messages'
 import { cleanAddress } from './agenda-location'
 import { congregationInUse, localSpeakerOriginName } from './oradores-congregations'
 import { apiJson, ApiError } from '../secure-api'
@@ -27,11 +27,11 @@ import { canonicalSpeaker, resolveSpeakerMasterId, repertoireNumbers, parseReper
 
 import { filteredThemeRows, themeUsageIndex, themeDate, THEME_FILTER_LABELS, type ThemeFilter } from './oradores-themes'
 import { downloadPdf } from '../ui/pdf-download'
-import { showMessagePreview } from '../ui/message-preview'
+import { copyMessageText, openMessageWhatsApp } from '../ui/message-actions'
 let themeFilter:ThemeFilter='available'
 let themeQuery=''
 
-type Screen = 'programacao' | 'temas' | 'eventos' | 'oradores' | 'congregacoes' | 'emergencia'
+type Screen = 'programacao' | 'temas' | 'eventos' | 'oradores' | 'congregacoes'
 type Planning = { meetingDays?:{ weekendDow?:number; weekendS1Dow?:number }; excludedDates?:string[]; enableSection1?:boolean; s1Time?:string; s2Time?:string }
 type TaskPerson = LinkedPerson & {name?:string;active?:boolean}
 
@@ -43,7 +43,6 @@ let rawSpeakers:Record<string,Speaker>={}
 let speakerBaseline:Record<string,unknown>|null=null
 let taskPeriods:Record<string,unknown>={}
 let speakerQuery=''
-let emergencyDate=''
 let scheduleQuery=''
 let scheduleFilter=''
 let onlyFuture=false
@@ -81,7 +80,7 @@ function installEditGuard():void {
   document.addEventListener('click',event=>{
     if (!document.getElementById('oradoresRoot')) return
     const button=(event.target as HTMLElement)?.closest('button')
-    if (!button || !button.matches('[data-workspace-tab], [data-module-index], #btnBack, #btnSair, [id^="cancel"], [id^="new"], [data-edit-speaker], [data-edit-schedule], [data-edit-theme], [data-edit-congregation], [data-edit-event], [data-substitute-date], #clearScheduleFilters, #fillScheduleDates, #findSpeakerSubstitute, #oradoresPrev, #oradoresNext')) return
+    if (!button || !button.matches('[data-workspace-tab], [data-module-index], #btnBack, #btnSair, [id^="cancel"], [id^="new"], [data-edit-speaker], [data-edit-schedule], [data-edit-theme], [data-edit-congregation], [data-edit-event], #clearScheduleFilters, #fillScheduleDates, #oradoresPrev, #oradoresNext')) return
     if (!allowLeave()) {event.preventDefault();event.stopImmediatePropagation()}
   },{...options,capture:true})
   window.addEventListener('beforeunload',event=>{if(document.getElementById('oradoresRoot')&&(dirty||saving)){event.preventDefault();event.returnValue=''}},options)
@@ -114,7 +113,7 @@ const schedule = (): Record<string, TalkSchedule> => data.programacao ?? {}
 const toast = (message: string): void => { const element=document.getElementById('toast'); if (!element) return; element.textContent=message; element.classList.add('show'); setTimeout(()=>element.classList.remove('show'), 3000) }
 const option = (value:string, label:string, selected:string): string => `<option value="${esc(value)}" ${value===selected?'selected':''}>${esc(label)}</option>`
 const field = (label:string, control:string, help=''): string => `<label class="form-field"><span>${esc(label)}</span>${control}${help ? `<small>${esc(help)}</small>` : ''}</label>`
-const sectionTitle = (title:string): string => `<div class="module-section-title" ${screen==='emergencia'?'data-substitution-title':''}>${screen === 'programacao' ? '' : moduleBackButton()}<h2>${esc(title)}</h2></div>`
+const sectionTitle = (title:string): string => `<div class="module-section-title">${screen === 'programacao' ? '' : moduleBackButton()}<h2>${esc(title)}</h2></div>`
 const empty = (message:string): string => `<p class="empty-state">${esc(message)}</p>`
 const isoNow = (): string => new Date().toISOString()
 
@@ -126,7 +125,7 @@ export default function mount(context: AppContext): void {
   const month=preferences.get('month',legacyMonth)
   selectedMonth=context.overview?.month??(/^\d{4}-(0[1-9]|1[0-2])$/.test(month)?month:fortalezaCurrentMonth())
   preferences.set('month',selectedMonth)
-  appContext=context;themeFilter='available';themeQuery='';dirty=false;saving=false;masterPeople={};rawSpeakers={};taskPeriods={};speakerQuery='';scheduleQuery='';scheduleFilter='';onlyFuture=false;emergencyDate=today();installEditGuard()
+  appContext=context;themeFilter='available';themeQuery='';dirty=false;saving=false;masterPeople={};rawSpeakers={};taskPeriods={};speakerQuery='';scheduleQuery='';scheduleFilter='';onlyFuture=false;installEditGuard()
   const savedFilter=preferences.get('scheduleFilter','')
   scheduleFilter=['','speaker','theme'].includes(savedFilter)?savedFilter:''
   onlyFuture=preferences.get('onlyFuture',false)
@@ -159,9 +158,8 @@ async function load(): Promise<boolean> {
   } catch { toast('Não foi possível carregar Oradores'); return false }
 }
 
-async function openScreen(next: Screen, substitutionDate=''): Promise<void> {
+async function openScreen(next: Screen): Promise<void> {
   if (!allowLeave()) return
-  if(next==='emergencia')emergencyDate=substitutionDate
   screen=next; editingId=''; renderNavigation(); root().innerHTML='<p class="empty-state">Carregando dados...</p>'
   loadPromise ??= load()
   const loaded=await loadPromise
@@ -172,7 +170,7 @@ async function openScreen(next: Screen, substitutionDate=''): Promise<void> {
 
 function renderNavigation(): void {
   const host=document.getElementById('oradoresNav'); if (!host) return
-  renderWorkspaceNav(host, selectedSection==='s1'?'Oradores · 1ª seção':'Oradores · 2ª seção', 'programacao', screen==='emergencia'?'programacao':screen, [
+  renderWorkspaceNav(host, selectedSection==='s1'?'Oradores · 1ª seção':'Oradores · 2ª seção', 'programacao', screen, [
     { id:'programacao', label:'Programação' },
     { id:'oradores', label:'Oradores' },
     { id:'congregacoes', label:'Intercâmbio' },
@@ -187,7 +185,6 @@ function render(): void {
   else if (screen==='temas') renderThemes()
   else if (screen==='congregacoes') renderCongregations()
   else if (screen==='eventos') renderEvents()
-  else renderEmergency()
 }
 
 function periodControl(): string {
@@ -238,7 +235,7 @@ function scheduleEditor(): string {
 function scheduleCard(id:string,item:TalkSchedule,showActions=true): string {
   const speaker=speakers()[item.oradorId??'']?.nome?.trim() || item.oradorNome?.trim() || 'Sem orador', theme=themes()[item.temaId??''], congregation=item.tipo==='discurso_local'?localSpeakerOriginName(item,congregations()):congregations()[scheduleCongregationId(item)]?.nome ?? scheduleCongregationName(item)
   const section=` · ${scheduleSection(item)==='s1'?'1ª seção':'2ª seção'}`
-  const actions=showActions?`<div class="service-actions"><button class="btn btn-ghost" data-edit-schedule="${esc(id)}">${!item.oradorId&&!item.oradorNome?'Definir orador':!item.temaId&&!item.temaTitulo?'Definir tema':'Editar'}</button>${id&&item.tipo!=='saida_orador'?`<button class="btn btn-ghost" data-substitute-date="${esc(item.data)}">Buscar substituto</button>`:''}</div>`:''
+  const actions=showActions?`<div class="service-actions"><button class="btn btn-ghost" data-edit-schedule="${esc(id)}" type="button">Editar</button><button class="btn btn-ghost" data-whatsapp-schedule="${esc(id)}" type="button">WhatsApp</button><button class="btn btn-ghost" data-copy-schedule="${esc(id)}" type="button">Copiar texto</button></div>`:''
   return `<article class="oradores-card"><div class="oradores-card-head"><div><strong>${esc(formatSpeakerDate(item.data))}</strong><small>${esc(TALK_KIND_LABEL[item.tipo]+section)}</small></div></div><div class="oradores-card-grid"><div><span>Orador</span><strong>${esc(speaker)}</strong></div><div><span>Tema</span><strong>${esc(theme?`${String(theme.numero).padStart(3,'0')} - ${theme.titulo}`:item.temaTitulo||'Sem tema')}</strong></div>${congregation?`<div><span>Congregação</span><strong>${esc(congregation)}</strong></div>`:''}${item.oradorSecundarioNome?`<div><span>Segundo orador</span><strong>${esc(item.oradorSecundarioNome)}</strong></div>`:''}</div>${actions}</article>`
 }
 
@@ -247,21 +244,31 @@ function renderSchedule(): void {
   const hasCombinedPdfRows=Object.values(schedule()).some(item=>sameMonth(item.data,selectedMonth)||(item.tipo==='saida_orador'&&item.data>=`${selectedMonth}-01`))
   const matchesFilter=(item:TalkSchedule,filter:string):boolean=>filter==='speaker'?!item.oradorId&&!item.oradorNome:filter==='theme'?!item.temaId&&!item.temaTitulo:true
   const rows=monthRows.filter(([,item])=>(!onlyFuture||item.data>=today())&&matchesFilter(item,scheduleFilter)&&[`${speakers()[item.oradorId??'']?.nome??item.oradorNome??''}`,themes()[item.temaId??'']?.titulo??item.temaTitulo??'',String(themes()[item.temaId??'']?.numero??item.temaNumero??'')].some(value=>value.toLocaleLowerCase('pt-BR').includes(scheduleQuery.toLocaleLowerCase('pt-BR')))).sort((a,b)=>a[1].data.localeCompare(b[1].data)||a[1].tipo.localeCompare(b[1].tipo))
-  root().innerHTML=`${sectionTitle('Programação de oradores')}${periodControl()}<div class="service-actions"><button id="newSchedule" class="btn btn-primary" type="button">Nova programação</button><button id="speakerSchedulePdf" class="btn btn-ghost" type="button" ${hasCombinedPdfRows?'':'disabled'}>Baixar PDF</button><button id="speakerScheduleXlsx" class="btn btn-ghost" type="button" ${hasCombinedPdfRows?'':'disabled'}>Baixar XLSX</button><button id="speakerSchedulePublish" class="btn btn-ghost" type="button" ${hasCombinedPdfRows?'':'disabled'}>Publicar no Quadro</button></div><details class="workspace-disclosure" data-ui-preference="schedule-options"><summary>Mais opções da programação</summary><div class="service-actions"><button id="fillScheduleDates" class="btn btn-ghost" type="button">Criar datas do mês</button><button id="findSpeakerSubstitute" class="btn btn-ghost" type="button">Buscar substituto</button></div></details><p id="speakerPublicationStatus" class="notice" aria-live="polite">Consultando publicação…</p>${monthRows.length ? '<p class="form-help">Publicar no Quadro atualiza o PDF; editar a programação não atualiza o arquivo já publicado.</p>' : ''}${scheduleEditor()}${monthRows.length ? `<div class="service-actions">${[['','Todos'],['speaker','Sem orador'],['theme','Sem tema']].map(([key,label])=>`<button class="btn ${scheduleFilter===key?'btn-primary':'btn-ghost'}" data-schedule-filter="${key}" aria-pressed="${scheduleFilter===key}">${label}: ${monthRows.filter(([,item])=>matchesFilter(item,key!)).length}</button>`).join('')}</div>
+  root().innerHTML=`${sectionTitle('Programação de oradores')}${periodControl()}<div class="service-actions"><button id="newSchedule" class="btn btn-primary" type="button">Nova programação</button><button id="speakerSchedulePdf" class="btn btn-ghost" type="button" ${hasCombinedPdfRows?'':'disabled'}>Baixar PDF</button><button id="speakerScheduleXlsx" class="btn btn-ghost" type="button" ${hasCombinedPdfRows?'':'disabled'}>Baixar XLSX</button><button id="speakerSchedulePublish" class="btn btn-ghost" type="button" ${hasCombinedPdfRows?'':'disabled'}>Publicar no Quadro</button></div><details class="workspace-disclosure" data-ui-preference="schedule-options"><summary>Mais opções da programação</summary><div class="service-actions"><button id="fillScheduleDates" class="btn btn-ghost" type="button">Criar datas do mês</button><button id="substitutionsPdf" class="btn btn-ghost" type="button">Baixar PDF de substituições</button></div></details><p id="speakerPublicationStatus" class="notice" aria-live="polite">Consultando publicação…</p>${monthRows.length ? '<p class="form-help">Publicar no Quadro atualiza o PDF; editar a programação não atualiza o arquivo já publicado.</p>' : ''}${scheduleEditor()}${monthRows.length ? `<div class="service-actions">${[['','Todos'],['speaker','Sem orador'],['theme','Sem tema']].map(([key,label])=>`<button class="btn ${scheduleFilter===key?'btn-primary':'btn-ghost'}" data-schedule-filter="${key}" aria-pressed="${scheduleFilter===key}">${label}: ${monthRows.filter(([,item])=>matchesFilter(item,key!)).length}</button>`).join('')}</div>
     ${field('Buscar na programação',`<input id="scheduleSearch" type="search" value="${esc(scheduleQuery)}" placeholder="Orador, número ou título do tema">`)}
     <label class="oradores-check"><input id="scheduleOnlyFuture" type="checkbox" ${onlyFuture?'checked':''}> Só o que falta (datas de hoje em diante)</label>` : ''}<div class="oradores-list">${rows.map(([id,item])=>scheduleCard(id,item)).join('')||empty(monthRows.length?'Nenhum resultado para esta busca ou filtro.':'Nenhuma programação neste mês. Use “Nova programação” ou “Criar datas do mês” para começar.')}</div>${monthRows.length && (scheduleQuery||scheduleFilter||onlyFuture)?'<button id="clearScheduleFilters" class="btn btn-ghost">Limpar filtros</button>':''}`
   mountRecordEditor(root(), 'speakerScheduleForm')
   bindPeriod()
   void showPublicationStatus()
   document.getElementById('clearScheduleFilters')?.addEventListener('click',()=>{if(!allowLeave())return;scheduleQuery='';scheduleFilter='';onlyFuture=false;preferences.set('scheduleFilter','');preferences.set('onlyFuture',false);renderSchedule()})
-  document.querySelectorAll<HTMLButtonElement>('[data-substitute-date]').forEach(button=>button.addEventListener('click',()=>{void openScreen('emergencia',button.dataset.substituteDate!)}))
+  document.querySelectorAll<HTMLButtonElement>('[data-copy-schedule]').forEach(button=>button.addEventListener('click',async()=>{
+    const item=schedule()[button.dataset.copySchedule??'']
+    if(!item||!visibleSchedule(item))return
+    await copyMessageText(scheduleCardText(item,data,selectedSection==='s1'?planning.s1Time:planning.s2Time),toast)
+  }))
+  document.querySelectorAll<HTMLButtonElement>('[data-whatsapp-schedule]').forEach(button=>button.addEventListener('click',()=>{
+    const item=schedule()[button.dataset.whatsappSchedule??'']
+    if(!item||!visibleSchedule(item))return
+    const message=scheduleCardText(item,data,selectedSection==='s1'?planning.s1Time:planning.s2Time)
+    openMessageWhatsApp(message,toast,speakers()[item.oradorId??'']?.telefone??'')
+  }))
   document.querySelectorAll<HTMLButtonElement>('[data-schedule-filter]').forEach(button=>button.addEventListener('click',()=>{if(!allowLeave())return;scheduleFilter=button.dataset.scheduleFilter??'';preferences.set('scheduleFilter',scheduleFilter);renderSchedule()}))
   document.getElementById('scheduleSearch')?.addEventListener('change',event=>{if(!allowLeave())return;scheduleQuery=(event.target as HTMLInputElement).value;renderSchedule()})
   document.getElementById('scheduleOnlyFuture')?.addEventListener('change',event=>{if(!allowLeave())return;onlyFuture=(event.target as HTMLInputElement).checked;preferences.set('onlyFuture',onlyFuture);renderSchedule()})
   bindScheduleFields()
   document.getElementById('newSchedule')?.addEventListener('click',()=>{ editingId='new'; scheduleDraft=null; renderSchedule() })
   fieldHelp(root(),'#speakerScheduleForm [name="oradorId"]','Escolha um orador cadastrado. Nome e telefone dos locais são editados no Admin.')
-  document.getElementById('findSpeakerSubstitute')?.addEventListener('click',()=>void openScreen('emergencia'))
+  document.getElementById('substitutionsPdf')?.addEventListener('click',event=>void downloadSubstitutionsPdf(event.currentTarget as HTMLButtonElement))
   document.getElementById('fillScheduleDates')?.addEventListener('click',()=>void createMonthSlots())
   document.getElementById('speakerSchedulePdf')?.addEventListener('click',()=>void downloadSchedulePdf())
   document.getElementById('speakerScheduleXlsx')?.addEventListener('click',()=>void downloadScheduleXlsx())
@@ -423,9 +430,9 @@ function renderSpeakers(): void {
       <details data-ui-preference="speaker-contact:${esc(id)}"><summary>Contato e habilitações</summary><div class="oradores-card-grid"><div><span>Telefone</span><strong>${esc(item.telefone||'Não informado')}</strong></div><div><span>Saída</span><strong>${item.aprovadoParaSaida?'Aprovado':'Não aprovado'}</strong></div><div><span>A Sentinela</span><strong>${item.sentinelaDirigente?'Dirigente':item.sentinelaSubstituto?'Substituto':'—'}</strong></div></div></details>
       ${item.tipo==='local'&&!item.masterId?'<p class="notice warning">Vincule esta pessoa ao cadastro Admin para habilitar a programação.</p>':''}
       <h3>Próximas designações</h3><div class="oradores-list">${assignmentEntries(data,id,today(),selectedSection==='s1'?planning.s1Time:planning.s2Time).map(entry=>`<div class="module-list-row"><div><strong>${esc(formatSpeakerDate(entry.date))}</strong><small>${esc(entry.text)}</small></div></div>`).join('')||'<p class="form-help">Nenhuma designação futura.</p>'}</div>
-      <div class="service-actions">${canEditPeople()?`<button class="btn btn-ghost" data-edit-speaker="${esc(id)}">Editar</button>`:''}<button data-notify-speaker="${esc(id)}" class="btn btn-primary" ${assignmentEntries(data,id,today(),selectedSection==='s1'?planning.s1Time:planning.s2Time).length?'':'disabled'}>Preparar mensagem das designações</button></div></article>`).join('')||empty('Nenhum orador encontrado.')
+      <div class="service-actions">${canEditPeople()?`<button class="btn btn-ghost" data-edit-speaker="${esc(id)}">Editar</button>`:''}<button data-whatsapp-speaker="${esc(id)}" class="btn btn-primary" ${assignmentEntries(data,id,today(),selectedSection==='s1'?planning.s1Time:planning.s2Time).length?'':'disabled'}>WhatsApp</button><button data-copy-speaker="${esc(id)}" class="btn btn-ghost" ${assignmentEntries(data,id,today(),selectedSection==='s1'?planning.s1Time:planning.s2Time).length?'':'disabled'}>Copiar texto</button></div></article>`).join('')||empty('Nenhum orador encontrado.')
     document.querySelectorAll<HTMLButtonElement>('[data-edit-speaker]').forEach(button=>button.addEventListener('click',()=>{editingId=button.dataset.editSpeaker!;renderSpeakers()}))
-    document.querySelectorAll<HTMLButtonElement>('[data-notify-speaker]').forEach(button=>button.addEventListener('click',()=>{const id=button.dataset.notifySpeaker!,speaker=speakers()[id];if(speaker)showMessagePreview({id:'oradoresMessagePreview',title:`Designações de ${speaker.nome}`,message:assignmentsMessage(data,id,today(),messageSettings.meetingText,selectedSection==='s1'?planning.s1Time:planning.s2Time),phone:speaker.telefone,toast})}))
+    document.querySelectorAll<HTMLButtonElement>('[data-whatsapp-speaker],[data-copy-speaker]').forEach(button=>button.addEventListener('click',()=>{const id=button.dataset.whatsappSpeaker??button.dataset.copySpeaker??'',speaker=speakers()[id];if(!speaker)return;const message=assignmentsMessage(data,id,today(),messageSettings.meetingText,selectedSection==='s1'?planning.s1Time:planning.s2Time);if(button.dataset.copySpeaker!==undefined)void copyMessageText(message,toast);else openMessageWhatsApp(message,toast,speaker.telefone??'')}))
   }
   list()
   document.getElementById('speakerSearch')?.addEventListener('input',event=>{speakerQuery=(event.target as HTMLInputElement).value;list()})
@@ -538,7 +545,7 @@ function renderCongregations():void {
       <div class="oradores-card-grid"><div><span>Contato</span><strong>${esc(selected.contato||'Não informado')}</strong></div><div><span>Telefone</span><strong>${esc(selected.telefone||'Não informado')}</strong></div><div><span>Reunião</span><strong>${esc([selected.diaReuniao,selected.horario].filter(Boolean).join(' às ')||'Não informada')}</strong></div><div><span>Endereço</span><strong>${esc(selected.localizacao||'Não informado')}</strong></div></div>
       <div class="service-actions">${canEditShared()||selected.tipo==='local'?`<button class="btn btn-ghost" data-edit-congregation="${esc(selectedCongregationId)}">Editar</button>`:'<p class="form-help">Cadastro visitante compartilhado, editável pelos responsáveis das duas seções.</p>'}</div>
       ${selected.tipo==='visitante'?`<details class="form-panel" data-ui-preference="available-dates"><summary>Oferecer datas disponíveis · ${selected.horizonteDatas??90} dias</summary><div id="availableDatesPanel"></div></details>
-      <details class="form-panel" data-ui-preference="exchanges"><summary>Intercâmbios · ${future.length} futuro(s)</summary><p class="form-help">A mensagem reúne apenas os arranjos futuros com orador, tema e congregação definidos nesta seção.</p><div class="oradores-list">${future.map(item=>scheduleCard('',item,false)).join('')||empty('Nenhum intercâmbio futuro com esta congregação.')}</div><button id="notifyCongregationExchanges" class="btn btn-primary" ${ready.length?'':'disabled'}>Preparar mensagem de intercâmbio</button></details>`:''}</article>`:empty('Nenhuma congregação cadastrada.')}<div id="oradoresMessageSettings"></div>`
+      <details class="form-panel" data-ui-preference="exchanges"><summary>Intercâmbios · ${future.length} futuro(s)</summary><p class="form-help">A mensagem reúne apenas os arranjos futuros com orador, tema e congregação definidos nesta seção.</p><div class="oradores-list">${future.map(item=>scheduleCard('',item,false)).join('')||empty('Nenhum intercâmbio futuro com esta congregação.')}</div><div class="service-actions"><button id="whatsappCongregationExchanges" class="btn btn-primary" ${ready.length?'':'disabled'}>WhatsApp</button><button id="copyCongregationExchanges" class="btn btn-ghost" ${ready.length?'':'disabled'}>Copiar texto</button></div></details>`:''}</article>`:empty('Nenhuma congregação cadastrada.')}<div id="oradoresMessageSettings"></div>`
   void mountModuleMessageSettings('oradoresMessageSettings',messageSettingsModule(),toast,settings=>{messageSettings=settings})
   mountRecordEditor(root(), 'congregationForm')
   fieldHelp(root(),'[name="localizacao"]','Endereço escrito: rua, número e bairro. Vai nas mensagens e PDFs.')
@@ -564,7 +571,9 @@ function renderCongregations():void {
   })
   document.getElementById('deleteCongregation')?.addEventListener('click',()=>void deleteCongregation())
   document.querySelector<HTMLButtonElement>('[data-edit-congregation]')?.addEventListener('click',()=>{editingId=selectedCongregationId;renderCongregations()})
-  document.getElementById('notifyCongregationExchanges')?.addEventListener('click',()=>{if(selected&&ready.length)showMessagePreview({id:'oradoresMessagePreview',title:`Intercâmbio com ${selected.nome}`,message:exchangesMessage(data,selectedCongregationId,today(),messageSettings.meetingText,selectedSection==='s1'?planning.s1Time:planning.s2Time,selectedSection),phone:selected.telefone,toast})})
+  const exchangeMessage=()=>exchangesMessage(data,selectedCongregationId,today(),messageSettings.meetingText,selectedSection==='s1'?planning.s1Time:planning.s2Time,selectedSection)
+  document.getElementById('whatsappCongregationExchanges')?.addEventListener('click',()=>{if(selected&&ready.length)openMessageWhatsApp(exchangeMessage(),toast,selected.telefone??'')})
+  document.getElementById('copyCongregationExchanges')?.addEventListener('click',()=>{if(selected&&ready.length)void copyMessageText(exchangeMessage(),toast)})
 }
 async function saveCongregation(form:HTMLFormElement):Promise<void>{
   if(form.dataset.saving==='yes')return
@@ -630,34 +639,17 @@ function renderAvailableDates(horizon=90):void {
   const panel=document.getElementById('availableDatesPanel');if(!panel)return
   const local=Object.values(congregations()).find(c=>c.tipo==='local'&&(c.secao??'s2')===selectedSection)
   const dates=local?availableDates(data,events,planning,today(),horizon,selectedSection):[]
-  panel.innerHTML=`<label class="form-field"><span>Prazo desta mensagem</span><select id="availableHorizon">${[90,180,365].map(value=>option(String(value),`${value} dias`,String(horizon))).join('')}</select></label><p class="form-help">Prazo inicial da ficha; sua escolha fica lembrada neste navegador. Escolha abaixo somente as datas que deseja oferecer; abrir o WhatsApp não envia a mensagem automaticamente.</p><p class="form-help">${esc(local?.nome||'Cadastre a congregação local e configure o dia da reunião.')}. Somente datas sem programação local; saídas não ocupam a reunião.</p><div style="max-height:240px;overflow:auto">${dates.map(date=>`<label style="display:block"><input type="checkbox" data-available-date="${date}"> ${esc(formatSpeakerDate(date))} · ${esc((selectedSection==='s1'?planning.s1Time:planning.s2Time)||local?.horario||'Horário a confirmar')}</label>`).join('')||empty('Nenhuma data disponível neste intervalo.')}</div><button id="sendAvailableDates" class="btn btn-primary" disabled>Preparar mensagem com datas selecionadas</button>`
+  panel.innerHTML=`<label class="form-field"><span>Prazo desta mensagem</span><select id="availableHorizon">${[90,180,365].map(value=>option(String(value),`${value} dias`,String(horizon))).join('')}</select></label><p class="form-help">As ${dates.length} datas livres deste prazo entram automaticamente na mensagem. Abrir o WhatsApp não envia a mensagem sozinho.</p><p class="form-help">${esc(local?.nome||'Cadastre a congregação local e configure o dia da reunião.')}. Uma data sem orador definido continua livre; saídas não ocupam a reunião local.</p><div class="oradores-list" style="max-height:240px;overflow:auto">${dates.map(date=>`<div class="module-list-row">${esc(formatSpeakerDate(date))} · ${esc((selectedSection==='s1'?planning.s1Time:planning.s2Time)||local?.horario||'Horário a definir')}</div>`).join('')||empty('Nenhuma data livre neste intervalo.')}</div><div class="service-actions"><button id="sendAvailableDates" class="btn btn-primary" type="button" ${dates.length?'':'disabled'}>WhatsApp · todas as datas</button><button id="copyAvailableDates" class="btn btn-ghost" type="button" ${dates.length?'':'disabled'}>Copiar texto</button></div>`
   document.getElementById('availableHorizon')?.addEventListener('change',event=>{const value=Number((event.target as HTMLSelectElement).value);preferences.set(`horizon:${selectedCongregationId}`,value);renderAvailableDates(value)})
-  panel.querySelectorAll<HTMLInputElement>('[data-available-date]').forEach(input=>input.addEventListener('change',()=>{const button=panel.querySelector<HTMLButtonElement>('#sendAvailableDates');if(button)button.disabled=!panel.querySelector('[data-available-date]:checked')}))
-  document.getElementById('sendAvailableDates')?.addEventListener('click',()=>{
-    const selected=[...panel.querySelectorAll<HTMLInputElement>('[data-available-date]:checked')].map(input=>input.dataset.availableDate!)
-    if(!selected.length){toast('Selecione pelo menos uma data');return}
-    showMessagePreview({id:'oradoresMessagePreview',title:`Datas para ${congregations()[selectedCongregationId]?.nome||'congregação'}`,message:availableMessage(data,selectedCongregationId,selected,selectedSection==='s1'?planning.s1Time:planning.s2Time,messageSettings.meetingText,selectedSection),phone:congregations()[selectedCongregationId]?.telefone||'',toast})
-  })
+  const message=()=>availableMessage(data,selectedCongregationId,dates,selectedSection==='s1'?planning.s1Time:planning.s2Time,messageSettings.meetingText,selectedSection)
+  document.getElementById('sendAvailableDates')?.addEventListener('click',()=>openMessageWhatsApp(message(),toast,congregations()[selectedCongregationId]?.telefone??''))
+  document.getElementById('copyAvailableDates')?.addEventListener('click',()=>{void copyMessageText(message(),toast)})
 }
-function unavailableThemeIds():Set<string>{return new Set([...themeUsageIndex(data,today())].filter(([,use])=>use.past||use.pending).map(([id])=>id))}
-function renderEmergency():void {
-  const used=unavailableThemeIds()
-  const existingId=emergencyDate?Object.entries(schedule()).find(([,item])=>item.data===emergencyDate&&item.tipo!=='saida_orador'&&visibleSchedule(item))?.[0]??'':''
-  const rows=Object.entries(speakers()).filter(([,item])=>item.tipo==='local'&&item.ativo&&(item.secao??'s2')===selectedSection)
-    .map(([id,item])=>({id,item,conflicts:emergencyDate?speakerConflicts(id,emergencyDate,data,masterPeople,taskPeople,taskPeriods,existingId):[],available:item.temaIds.filter(themeId=>themes()[themeId]?.ativo&&!used.has(themeId)).map(themeId=>themes()[themeId]!)}))
-    .filter(row=>row.available.length).sort((a,b)=>a.conflicts.length-b.conflicts.length||a.item.nome.localeCompare(b.item.nome,'pt-BR'))
-  root().innerHTML=`${sectionTitle('Substituições')}<button id="substitutionsPdf" class="btn btn-ghost">Baixar PDF de substituições</button>${emergencyDate?`<p class="form-help" id="substitutionContext">Substituição para ${themeDate(emergencyDate)}</p>`:''}<p class="form-help">Oradores ativos com temas que não foram usados nem estão programados.${emergencyDate?(canReadTasks()?'':' Designações de Tarefas não verificadas com seu acesso.'):' A data e os conflitos serão conferidos na programação.'}</p>
-    <div class="oradores-list">${rows.map(row=>`<article class="oradores-card"><strong>${esc(row.item.nome)}</strong><small>${row.available.sort((a,b)=>a.numero-b.numero).map(theme=>`${theme.numero} — ${esc(theme.titulo)}`).join('<br>')}</small>
-    ${emergencyDate?(row.conflicts.map(reason=>`<p class="notice warning">${esc(reason)}</p>`).join('')||'<p>Sem conflitos encontrados nesta data.</p>'):''}
-    <button class="btn btn-ghost" data-emergency-speaker="${esc(row.id)}" ${row.conflicts.length?'disabled':''}>${emergencyDate?'Programar nesta data':'Escolher data e programar'}</button></article>`).join('')||empty('Nenhum orador tem tema disponível no momento.')}</div>`
-  document.getElementById('substitutionsPdf')?.addEventListener('click',event=>{
-    const reportRows=rows.map(row=>({name:row.item.nome,themes:[...row.available].sort((a,b)=>a.numero-b.numero)})),date=emergencyDate||today()
-    void downloadOperationalReport(event.currentTarget as HTMLButtonElement,async()=>{const {createSubstitutionsReportPdf}=await import('./oradores-reports');return createSubstitutionsReportPdf(reportRows,date)},`substituicoes-${date}.pdf`)
-  })
-  document.querySelectorAll<HTMLButtonElement>('[data-emergency-speaker]').forEach(button=>button.addEventListener('click',()=>{
-    const existing=Object.entries(schedule()).find(([,item])=>item.data===emergencyDate&&item.tipo!=='saida_orador'&&visibleSchedule(item))
-    if(existing&&!confirm('Já existe uma reunião nesta data. Abrir a edição para substituir o orador?'))return
-    screen='programacao';if(emergencyDate)selectedMonth=emergencyDate.slice(0,7);editingId=existing?.[0]??'new'
-    scheduleDraft={tipo:'discurso_local',secao:selectedSection,data:emergencyDate,oradorId:button.dataset.emergencySpeaker!,themeNumber:'',temaId:''};dirty=true;render()
-  }))
+function downloadSubstitutionsPdf(button:HTMLButtonElement):void {
+  const used=new Set([...themeUsageIndex(data,today())].filter(([,usage])=>usage.past||usage.pending).map(([id])=>id))
+  const rows=Object.values(speakers()).filter(item=>item.tipo==='local'&&item.ativo&&(item.secao??'s2')===selectedSection)
+    .map(item=>({name:item.nome,themes:item.temaIds.filter(id=>themes()[id]?.ativo&&!used.has(id)).map(id=>themes()[id]!)}))
+    .filter(row=>row.themes.length).sort((a,b)=>a.name.localeCompare(b.name,'pt-BR'))
+  const date=today()
+  void downloadOperationalReport(button,async()=>{const {createSubstitutionsReportPdf}=await import('./oradores-reports');return createSubstitutionsReportPdf(rows,date)},`substituicoes-${date}.pdf`)
 }

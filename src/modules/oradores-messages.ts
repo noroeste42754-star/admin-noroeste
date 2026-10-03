@@ -1,4 +1,5 @@
 import { cleanAddress } from './agenda-location.ts'
+import { localSpeakerOriginName } from './oradores-congregations.ts'
 import { contextualMessage, displayPhone, messageDate, SPEAKER_FOOTER } from './message-domain.ts'
 import { exchangeReady, scheduleCongregationId, scheduleCongregationName, type SpeakersRoot, type TalkSchedule } from './oradores-domain.ts'
 
@@ -32,6 +33,16 @@ function localCongregation(root:SpeakersRoot,item?:TalkSchedule) {
 function themeLine(item:TalkSchedule,root:SpeakersRoot):string {
   const theme=root.temas?.[item.temaId??''],number=theme?.numero??item.temaNumero,title=theme?.titulo||item.temaTitulo||'A definir'
   return number?`📖 *Tema ${number}:* ${title}`:`📖 Tema: ${title}`
+}
+export function scheduleCardText(item:TalkSchedule,root:SpeakersRoot,localTime=''):string {
+  const congregation=root.congregacoes?.[scheduleCongregationId(item)]
+  const local=localCongregation(root,item)
+  const time=item.tipo==='saida_orador'?congregation?.horario:item.horarioLocal||localTime||local?.horario
+  const kind=item.tipo==='saida_orador'?'Saída de orador':item.tipo==='discurso_visitante'?'Discurso visitante':'Discurso local'
+  const place=item.tipo==='discurso_local'?localSpeakerOriginName(item,root.congregacoes??{}):congregation?.nome||scheduleCongregationName(item)||'A definir'
+  const speaker=root.oradores?.[item.oradorId??'']?.nome||item.oradorNome||'A definir'
+  const second=root.oradores?.[item.oradorSecundarioId??'']?.nome||item.oradorSecundarioNome
+  return [messageDate(item.data,time),`🏛️ *${item.secao==='s1'?'1ª seção':'2ª seção'}*`,`🎙️ *${kind}*`,`👤 *Orador:* ${speaker}`,second?`👤 *Segundo orador:* ${second}`:'',themeLine(item,root),`🏛️ *Congregação${item.tipo==='saida_orador'?' de destino':item.tipo==='discurso_visitante'?' de origem':''}:* ${place}`].filter(Boolean).join('\n')
 }
 export function assignmentEntries(root:SpeakersRoot,id:string,today:string,localTime=''):{date:string;text:string;talk:boolean}[] {
   const rows=Object.values(root.programacao??{}).filter(item=>item.data>=today)

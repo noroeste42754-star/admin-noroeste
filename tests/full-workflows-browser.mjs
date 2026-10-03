@@ -95,10 +95,10 @@ try{
   await click('#fillScheduleDates');await page.waitForFunction(()=>document.querySelectorAll('[data-edit-schedule]').length>=5)
   assert.equal(Object.values(data.tarefas.discursos.programacao).filter(p=>p.secao===section&&p.data.startsWith(month)&&p.tipo!=='saida_orador').length,5)
   await tab('oradores');await click('[data-edit-speaker]');await click('#cancelSpeakerEdit');await click('#newSpeaker');await click('#cancelSpeakerEdit')
-  await click('[data-notify-speaker]');assert.match(await page.locator('#oradoresMessagePreview textarea').inputValue(),/🎙️|📖/);await click('#oradoresMessagePreview [data-copy]');await click('#oradoresMessagePreview [data-open]');await click('#oradoresMessagePreview [data-close]')
+  await click('[data-copy-speaker]');assert.match(await page.evaluate(()=>navigator.clipboard.readText()),/🎙️|📖/);await click('[data-whatsapp-speaker]');assert.match((await page.evaluate(()=>window.__externalLinks.at(-1))),/^https:\/\/wa.me\/55/)
   await click(`#moduleMessage_${module}_save`);await page.locator('#toast').filter({hasText:'Mensagem do módulo salva'}).waitFor()
-  await tab('congregacoes');await page.locator('#congregationContext').selectOption('v');await click('[data-available-date]');await click('#sendAvailableDates');await click('#oradoresMessagePreview [data-copy]');await click('#oradoresMessagePreview [data-close]')
-  await tab('programacao');await click('#findSpeakerSubstitute');await tab('programacao');assert.equal(await page.locator('[data-workspace-tab="pendencias"],[data-workspace-tab="emergencia"],[data-notify-schedule],#oradoresMessageSettings').count(),0)
+  await tab('congregacoes');await page.locator('#congregationContext').selectOption('v');assert.equal(await page.locator('[data-available-date]').count(),0);await click('#copyAvailableDates');const offered=await page.evaluate(()=>navigator.clipboard.readText());assert.match(offered,/\d{2}\/\d{2}\/2026/);await click('#sendAvailableDates');assert.equal(await page.evaluate(()=>new URL(window.__externalLinks.at(-1)).searchParams.get('text')),offered.replace(/\r\n/g,'\n'))
+  await tab('programacao');await click('#substitutionsPdf');assert.equal(await page.locator('#findSpeakerSubstitute,[data-emergency-speaker],[data-workspace-tab="emergencia"],[data-notify-schedule],#oradoresMessageSettings').count(),0)
   console.log(module+': cadastros compartilhados, local protegido, duplicação recusada, datas da própria seção e publicação conjunta OK')
  }
  // Reload and module changes must keep optional panels/filters without database writes.
@@ -136,7 +136,7 @@ try{
  await tab('config');await click('#cSave');await click('#saveScaleRules');await click('#restoreScaleRules');await page.locator('#cExclusion').fill('2026-10-31');await click('#cAddExclusion');await click('[data-remove-exclusion]')
  console.log('TPL: PDF, publicar/reabrir, local criar/excluir, regras e exceções OK')
  await page.goto(new URL('/quadro/',origin).href);await click('#quadroPrev');await click('#quadroNext');await click('#quadroToday');for(const f of ['tarefas','escala','s1','s2','todos'])await click(`[data-quadro-filter="${f}"]`)
- await click('[data-quadro-tab="geral"]');await page.locator('details summary').click();await click('#quadroCopy')
+ await click('[data-quadro-tab="geral"]');await page.locator('details summary').click();await click('#quadroCopy');const quadroText=await page.evaluate(()=>navigator.clipboard.readText());await click('#quadroWhatsApp');assert.equal(await page.evaluate(()=>new URL(window.__externalLinks.at(-1)).searchParams.get('text')),quadroText.replace(/\r\n/g,'\n'))
  assert.deepEqual(errors,[])
  assert.ok(downloads.filter(d=>d.bytes.subarray(0,4).toString()==='%PDF').length>=6)
  console.log('Quadro: navegação, filtros e cópia OK. '+requests.length+' chamadas simuladas; nenhuma gravação remota.')

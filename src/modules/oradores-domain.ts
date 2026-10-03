@@ -161,6 +161,9 @@ export function normalizeSpeakerEvents(value: unknown): Record<string, SpeakerEv
 
 export function scheduleCongregationId(item: TalkSchedule): string { return item.tipo === 'saida_orador' ? item.congregacaoDestinoId ?? '' : item.congregacaoOrigemId ?? '' }
 export function scheduleCongregationName(item: TalkSchedule): string { return item.tipo === 'saida_orador' ? item.congregacaoDestinoNome ?? '' : item.congregacaoOrigemNome ?? '' }
+export function hasScheduledSpeaker(item: TalkSchedule): boolean {
+  return Boolean(item.oradorId?.trim() || item.oradorNome?.trim() || item.oradorSecundarioId?.trim() || item.oradorSecundarioNome?.trim())
+}
 export function exchangeReady(item: TalkSchedule): boolean {
   return Boolean((item.oradorId || item.oradorNome) && (item.temaId || item.temaTitulo || item.temaNumero) && (scheduleCongregationId(item) || scheduleCongregationName(item)))
 }

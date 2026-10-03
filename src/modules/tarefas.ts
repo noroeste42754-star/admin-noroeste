@@ -7,7 +7,7 @@ import { taskSubstitutes } from './substitution-domain'
 import { canonicalTaskPerson } from './central-person'
 import { fortalezaToday, fortalezaCurrentMonth, isValidCivilDate, nextCivilMonth } from './civil-date'
 import { tasksPersonMessage, tasksDayMessage } from './tarefas-messages'
-import { showMessagePreview } from '../ui/message-preview'
+import { copyMessageText, openMessageWhatsApp } from '../ui/message-actions'
 import { editorBusy, editorError } from '../ui/editor-feedback'
 import { lockPublicationUi } from '../ui/publication-busy'
 import { renderWorkspaceNav } from '../ui/workspace-nav'
@@ -124,10 +124,6 @@ let changingPublication = false
 let generatingTaskScale = false
 let loadPromise: Promise<boolean> | null = null
 
-
-function showTaskMessage(message:string,phone?:string):void {
-  showMessagePreview({id:'taskMessagePreview',title:'Mensagem de Tarefas',message,phone,allowNoPhone:phone===undefined,toast})
-}
 
 function monthNow(): string {
   return fortalezaCurrentMonth()
@@ -370,7 +366,7 @@ function renderEscala(): void {
         <div style="display:flex;gap:8px;align-items:center;margin-top:12px"><label class="form-label" for="tarefasPrintFont" style="margin:0;white-space:nowrap">Letra do PDF</label><input id="tarefasPrintFont" class="form-input" type="range" min="${PRINT_MIN_PT}" max="${PRINT_MAX_PT}" step="1" value="${font}" style="padding:0;flex:1"><span id="tarefasPrintFontValue" style="min-width:42px;text-align:right;font-size:.82rem;font-weight:700;color:var(--ink-2)">${font} pt</span></div>
       </details>
     </div>
-    <details class="form-panel" data-ui-preference="day-message"><summary>Mensagem das designações do dia</summary><label class="form-field"><span>Data</span><select id="taskMessageDate">${[...new Set(allPeriodMeetings.map(meeting=>meeting.date).filter(Boolean))].map(date=>`<option value="${escapeHtml(date)}">${escapeHtml(formatDate(date))}</option>`).join('')}</select></label><button id="taskSendDay" class="btn btn-ghost" type="button" ${allPeriodMeetings.length?'':'disabled'}>Ver mensagem do dia</button></details>
+    <details class="form-panel" data-ui-preference="day-message"><summary>Mensagem das designações do dia</summary><label class="form-field"><span>Data</span><select id="taskMessageDate">${[...new Set(allPeriodMeetings.map(meeting=>meeting.date).filter(Boolean))].map(date=>`<option value="${escapeHtml(date)}">${escapeHtml(formatDate(date))}</option>`).join('')}</select></label><div class="service-actions"><button id="taskSendDay" class="btn btn-primary" type="button" ${allPeriodMeetings.length?'':'disabled'}>WhatsApp</button><button id="taskCopyDay" class="btn btn-ghost" type="button" ${allPeriodMeetings.length?'':'disabled'}>Copiar texto</button></div></details>
     <div class="task-desktop-scale">${taskDesktopTable(allPeriodMeetings)}</div>
     <div class="task-mobile-scale" style="display:flex;flex-direction:column;gap:8px">
       ${allPeriodMeetings.length
@@ -379,7 +375,9 @@ function renderEscala(): void {
     </div>
     ${preservedMeetings.length ? `<details class="form-panel" data-ui-preference="preserved-records" style="margin-top:12px"><summary>Registros preservados fora do período atual (${preservedMeetings.length})</summary><div class="module-option-list" style="margin-top:10px">${preservedMeetings.map(entry => `<div class="module-list-row"><div><strong>${escapeHtml(formatDate(entry.meeting.date))}</strong><small>${canonicalMeetingType(entry.meeting.type) === 'midweek' ? 'Meio de semana' : 'Fim de semana'} · ${assignmentCount(entry.meeting)} função(ões)</small></div></div>`).join('')}</div></details>` : ''}`
 
-  document.getElementById('taskSendDay')?.addEventListener('click',()=>{const date=(document.getElementById('taskMessageDate') as HTMLSelectElement).value;showTaskMessage(tasksDayMessage(date,pessoas,allPeriodMeetings,'',taskMessageSettings.meetingText))})
+  const dayMessage=()=>tasksDayMessage((document.getElementById('taskMessageDate') as HTMLSelectElement).value,pessoas,allPeriodMeetings,'',taskMessageSettings.meetingText)
+  document.getElementById('taskSendDay')?.addEventListener('click',()=>openMessageWhatsApp(dayMessage(),toast))
+  document.getElementById('taskCopyDay')?.addEventListener('click',()=>{void copyMessageText(dayMessage(),toast)})
   document.getElementById('tarefasPrintFont')?.addEventListener('input', (event) => {
     const value = Number((event.target as HTMLInputElement).value)
     localStorage.setItem(PRINT_FONT_KEY, String(value))
@@ -431,6 +429,14 @@ function renderEscala(): void {
     const periodId=button.dataset.period!, meetingId=button.dataset.editMeeting!
     const meeting=periods[periodId]?.meetings?.[meetingId]
     if(meeting)openMeetingEditor(periodId,meetingId,meeting)
+  }))
+  content.querySelectorAll<HTMLButtonElement>('[data-whatsapp-meeting],[data-copy-meeting]').forEach(button=>button.addEventListener('click',()=>{
+    const periodId=button.dataset.period??'',meetingId=button.dataset.whatsappMeeting??button.dataset.copyMeeting??''
+    const meeting=periods[periodId]?.meetings?.[meetingId]
+    if(!meeting?.date)return
+    const message=tasksDayMessage(meeting.date,pessoas,[meeting],'',taskMessageSettings.meetingText)
+    if(button.dataset.copyMeeting!==undefined)void copyMessageText(message,toast)
+    else openMessageWhatsApp(message,toast)
   }))
   if (pendingTarget?.meetingId) {
     const target=pendingTarget, meetingId=target.meetingId!
@@ -635,7 +641,7 @@ function renderParticipantes(): void {
         ? rows.map(([id, p]) => pessoaRow(id, p, usage[id] ?? 0, lastUse[id] ?? '', id === targetPersonId)).join('')
         : emptyState('Nenhum participante. Adicione pelo módulo Admin.')}
     </div>`
-  content.querySelectorAll<HTMLButtonElement>('[data-message-task-person]').forEach(button=>button.addEventListener('click',()=>{const id=button.dataset.messageTaskPerson!;showTaskMessage(tasksPersonMessage(id,pessoas,scaleMeetingEntries().map(entry=>entry.meeting),todayStr(),taskMessageSettings.meetingText),personPhone(pessoas[id]))}))
+  content.querySelectorAll<HTMLButtonElement>('[data-whatsapp-task-person],[data-copy-task-person]').forEach(button=>button.addEventListener('click',()=>{const id=button.dataset.whatsappTaskPerson??button.dataset.copyTaskPerson??'',message=tasksPersonMessage(id,pessoas,scaleMeetingEntries().map(entry=>entry.meeting),todayStr(),taskMessageSettings.meetingText);if(button.dataset.copyTaskPerson!==undefined)void copyMessageText(message,toast);else openMessageWhatsApp(message,toast,personPhone(pessoas[id])??'')}))
   document.getElementById('btnAddTaskPerson')?.addEventListener('click', () => openTaskPersonModal(null))
   document.getElementById('taskReviewAvailability')?.addEventListener('click', async () => {
     try { await update(tarefasPlanejamentoRef, { availabilityReviewedMonth:preparationMonth }); planning.availabilityReviewedMonth=preparationMonth; toast('Disponibilidades revisadas'); renderParticipantes() }
@@ -762,7 +768,7 @@ function sectionTitle(title: string, desc: string): string {
 
 function taskDesktopTable(meetings: TarefasMeeting[]): string {
   if (!meetings.length) return emptyState('Nenhuma reunião cadastrada neste período.')
-  return `<div class="task-scale-table-wrap"><table class="task-scale-table"><thead><tr><th>Reunião</th>${TASK_ROLES.map(role => `<th>${escapeHtml(TASK_ROLE_LABELS[role])}</th>`).join('')}</tr></thead><tbody>${meetings.map(meeting => { const ref = meetingRefFor(meeting), locked = ref ? periods[ref.periodId]?.locked === true : false; return `<tr data-task-meeting-id="${escapeHtml(ref?.meetingId)}"><th><strong>${escapeHtml(formatDate(meeting.date))}</strong><small>${meetingLabel(meeting, true)}</small>${ref&&!locked?`<button class="btn btn-ghost" type="button" data-edit-meeting="${escapeHtml(ref.meetingId)}" data-period="${escapeHtml(ref.periodId)}">Editar</button>`:''}</th>${TASK_ROLES.map(role => `<td>${meetingAllowsRole(meeting, role) && ref ? assignmentEditor(ref.periodId, ref.meetingId, meeting, role, locked) : '<span class="task-not-applicable">—</span>'}</td>`).join('')}</tr>` }).join('')}</tbody></table></div>`
+  return `<div class="task-scale-table-wrap"><table class="task-scale-table"><thead><tr><th>Reunião</th>${TASK_ROLES.map(role => `<th>${escapeHtml(TASK_ROLE_LABELS[role])}</th>`).join('')}</tr></thead><tbody>${meetings.map(meeting => { const ref = meetingRefFor(meeting), locked = ref ? periods[ref.periodId]?.locked === true : false; return `<tr data-task-meeting-id="${escapeHtml(ref?.meetingId)}"><th><strong>${escapeHtml(formatDate(meeting.date))}</strong><small>${meetingLabel(meeting, true)}</small>${ref?`<div class="service-actions">${!locked?`<button class="btn btn-ghost" type="button" data-edit-meeting="${escapeHtml(ref.meetingId)}" data-period="${escapeHtml(ref.periodId)}">Editar</button>`:''}<button class="btn btn-ghost" type="button" data-whatsapp-meeting="${escapeHtml(ref.meetingId)}" data-period="${escapeHtml(ref.periodId)}">WhatsApp</button><button class="btn btn-ghost" type="button" data-copy-meeting="${escapeHtml(ref.meetingId)}" data-period="${escapeHtml(ref.periodId)}">Copiar texto</button></div>`:''}</th>${TASK_ROLES.map(role => `<td>${meetingAllowsRole(meeting, role) && ref ? assignmentEditor(ref.periodId, ref.meetingId, meeting, role, locked) : '<span class="task-not-applicable">—</span>'}</td>`).join('')}</tr>` }).join('')}</tbody></table></div>`
 }
 
 const expandedTaskMeetings=new Set<string>()
@@ -789,7 +795,7 @@ function meetingCard(meeting: TarefasMeeting): string {
       </summary>
       <div style="display:flex;flex-direction:column;gap:6px;margin-top:10px">
         ${editors}
-        ${ref&&!locked?`<button class="btn btn-ghost" type="button" data-edit-meeting="${escapeHtml(ref.meetingId)}" data-period="${escapeHtml(ref.periodId)}">Editar reunião</button>`:''}
+        ${ref?`<div class="service-actions">${!locked?`<button class="btn btn-ghost" type="button" data-edit-meeting="${escapeHtml(ref.meetingId)}" data-period="${escapeHtml(ref.periodId)}">Editar</button>`:''}<button class="btn btn-ghost" type="button" data-whatsapp-meeting="${escapeHtml(ref.meetingId)}" data-period="${escapeHtml(ref.periodId)}">WhatsApp</button><button class="btn btn-ghost" type="button" data-copy-meeting="${escapeHtml(ref.meetingId)}" data-period="${escapeHtml(ref.periodId)}">Copiar texto</button></div>`:''}
       </div>
     </details>`
 }
@@ -919,7 +925,7 @@ function pessoaRow(id: string, p: TarefasPessoa, recentUsage: number, lastUse: s
         </div>
         <div style="font-size:.72rem;color:var(--ink-3);margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${escapeHtml(roles)}</div>
       </div>
-      <button class="btn btn-ghost" type="button" data-message-task-person="${escapeHtml(id)}" style="padding:4px 9px;font-size:.76rem">Mensagem</button>
+      <button class="btn btn-ghost" type="button" data-whatsapp-task-person="${escapeHtml(id)}" style="padding:4px 9px;font-size:.76rem">WhatsApp</button><button class="btn btn-ghost" type="button" data-copy-task-person="${escapeHtml(id)}" style="padding:4px 9px;font-size:.76rem">Copiar texto</button>
       <span style="width:9px;height:9px;border-radius:50%;background:${linked ? '#1A6B3C' : 'var(--danger)'}"></span>
       ${context.usuario.apps.mestre || context.usuario.apps.tarefas ? `<button class="btn btn-ghost" type="button" data-edit-task-person="${escapeHtml(id)}" style="padding:4px 9px;font-size:.76rem">Editar</button>` : ''}
     </div>`
